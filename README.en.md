@@ -81,7 +81,7 @@ No Intel binary is provided and Intel hardware has not been validated. API-key-o
 3. Eject the installation disk and launch the app from Applications.
 4. Optionally enable **Settings → Appearance & About → Launch at login**. The current UI is in Chinese.
 
-Quit older copies before updating. Earlier builds were called UsageBar; launch CodexUsageBar after installation. The bundle identity is retained to preserve existing preferences.
+Quit older copies before updating, launch CodexUsageBar after installation. The bundle identity is retained to preserve existing preferences.
 
 **Signing:** the first release is ad-hoc signed and is not Apple Developer ID signed or notarized. macOS may show a security prompt. Check the release source and SHA256 checksums; build from source if you prefer not to run an unnotarized binary. Login items can require approval in System Settings and should be registered after moving the app to a stable location.
 
