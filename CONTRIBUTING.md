@@ -21,4 +21,8 @@ Use focused assertions for data formatting, unknown/zero/reset states, preferenc
 
 See [docs/releasing.md](docs/releasing.md). Update both README languages and the release notes when behavior changes. Do not change bundle identity casually because it affects preferences, single-instance detection, and login items.
 
-No contribution license has been selected yet. Discuss licensing with the repository owner before submitting code intended for redistribution.
+## 贡献许可 / Contribution license
+
+本项目采用 [Apache License 2.0](LICENSE)。除非明确另作声明，有意提交并纳入本项目的贡献按同一协议授权，遵循协议第 5 条。请确保你有权提交所贡献的代码或素材，并保留适用的第三方许可与归属声明。
+
+Unless explicitly stated otherwise, contributions intentionally submitted for inclusion in this project are licensed under Apache License 2.0, as described in section 5. Ensure you have the right to submit your code or assets and preserve applicable third-party licenses and attribution.

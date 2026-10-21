@@ -12,6 +12,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -O \
 xcrun swift -module-cache-path "$CACHE" "$ROOT/native/Tools/MakeIcon.swift" "$ROOT/.build/CodexUsageBar.iconset" "$ROOT/native/Resources/CodexUsageBarAppIcon.png"
 iconutil -c icns "$ROOT/.build/CodexUsageBar.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -f "$APP/Contents/Resources/CodexServiceIcon.png"
+cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

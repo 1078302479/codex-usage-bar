@@ -123,4 +123,6 @@ Report issues through [GitHub Issues](https://github.com/1078302479/codex-usage-
 
 ## License and marks
 
-No open-source license has been selected yet. Public availability does not grant unrestricted use, modification, or redistribution rights. Codex, OpenAI, and other third-party names/marks belong to their owners; the project name describes the supported service.
+This project is fully open source under the **[Apache License 2.0](LICENSE)**, permitting free use, modification, redistribution, and commercial use. Redistribution must comply with the license, including providing a copy of the license, retaining applicable copyright and attribution notices, and prominently marking modified files. See [NOTICE](NOTICE) for attribution. The software is provided "AS IS", without warranties.
+
+This grant also covers the project's original code and its builds published as v0.1.1 in this repository. Codex, OpenAI, and other third-party names and marks remain the property of their owners. This license grants no additional rights to third-party trademarks or assets; the project name describes the supported service.
