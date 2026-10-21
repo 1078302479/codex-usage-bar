@@ -7,6 +7,12 @@ xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/QuotaModels.swift" "$ROOT/nativ
 xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Sources/ActivityHeatmap.swift" "$ROOT/native/Tests/HeatmapTests.swift" -o "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/QuotaCoreTests"
+xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/StabilityTests.swift" -o "$ROOT/.build/StabilityTests"
+if [[ "${1:-}" == "--ui" ]]; then
+  "$ROOT/.build/StabilityTests" --ui
+else
+  "$ROOT/.build/StabilityTests"
+fi
 xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/QuotaModels.swift" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Sources/CodexClient.swift" "$ROOT/native/Tools/QuotaProbe.swift" -o "$ROOT/.build/QuotaProbe"
 xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/ClientLogMonitor.swift" "$ROOT/native/Tools/MonitorProbe.swift" -o "$ROOT/.build/MonitorProbe"
 if [[ "${1:-}" == "--watch" ]]; then

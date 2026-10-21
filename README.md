@@ -24,6 +24,8 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 - **自动核验**：默认跟随本机客户端额度变化，另可选择 1、5、15 分钟定时核验。
 - **原生体验**：深色、浅色、跟随系统；弹窗按内容展开并可拖动调整高度；支持登录时自动启动。
 
+后台资源优化：设置窗口关闭后释放，下次打开重建；额度弹窗关闭后释放视图，继续监听和核验额度，重新打开恢复当前数据与本次运行的高度偏好。菜单栏内容未变时复用图像。启动时遍历日志仅保留最近 24 个候选，避免保留全部历史文件列表（仍需遍历目录）。
+
 ## 界面预览
 
 以下为维护者在 macOS 上运行 **v0.1.1** 的实际截图（2026-10-21），账号信息已遮盖。额度和 Token 数值仅代表截图时的账号状态；界面当前为中文。
@@ -80,7 +82,7 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 
 ## 安装
 
-1. 在 [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest) 下载 `CodexUsageBar-0.1.1-mac-arm64.dmg`。
+1. 在 [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest) 下载 `CodexUsageBar-0.1.2-mac-arm64.dmg`。
 2. 双击 DMG，将 **CodexUsageBar** 拖到右侧 **Applications（应用程序）** 文件夹。
 3. 推出安装磁盘，从“应用程序”打开应用。
 4. 需要自启动时，进入 **设置 → 外观与关于 → 登录时自动启动**。
@@ -127,13 +129,16 @@ python3 -m unittest discover -s tests -v
 node --check prototype/app.js
 ```
 
-原生检查包括 39 项核心断言与 9 项热力图命中检查。可选的文件监听与真实账号探针：
+原生检查包括 39 项核心断言、9 项热力图命中检查，以及 1,000 个日志文件的最近候选筛选检查。可选的窗口生命周期、文件监听与真实账号探针：
 
 ```sh
+bash scripts/test-native.sh --ui
 bash scripts/test-native.sh --watch
 .build/QuotaProbe
 .build/QuotaProbe --activity
 ```
+
+`--ui` 在桌面会话中反复打开和关闭设置窗口 30 次、额度弹窗 100 次，验证窗口和视图控制器释放、重新打开、弹窗高度保留与菜单图像复用；使用临时偏好，不发起账号请求。短周期检查不代表长时间运行或真实休眠唤醒的内存验收。
 
 真实账号探针输出含脱敏账号和用量元数据，提交 Issue 前请先检查并删除个人信息。受限执行环境可能阻止 App Server、FSEvents 或磁盘镜像操作，请在正常 macOS 终端运行。
 

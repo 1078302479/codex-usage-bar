@@ -243,7 +243,7 @@ struct UsageSettingsView: View {
                     }
                 }
                 Section("关于 CodexUsageBar") {
-                    LabeledContent("版本", value: "0.1.1")
+                    LabeledContent("版本", value: "0.1.2")
                     Text("只读套餐额度，常驻 macOS 菜单栏。时间按北京时间显示。")
                     Text("Token 活动来自官方账号统计；支持登录时自动启动，当前不包含系统通知。")
                         .foregroundStyle(.secondary)

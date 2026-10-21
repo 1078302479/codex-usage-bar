@@ -23,6 +23,8 @@ This is an independent community project, not an official OpenAI application or 
 - Event-following refresh by default, with optional 1-, 5-, and 15-minute polling.
 - Light, dark, and system appearance; an expanding/resizable popover; macOS login-item support.
 
+Background resources: settings windows are released on close, and the quota panel releases its view while hidden. Quota monitoring and validation continue. Reopening restores current data and the panel height for the current run. Unchanged menu artwork is reused. Startup log discovery retains only the newest 24 candidates while still enumerating the directory.
+
 ## Screenshots
 
 Captured from **v0.1.1** running on the maintainer's Mac on 2026-10-21. Account information has been covered. Quota and token values reflect only the account state at capture time. The current UI is Chinese.
@@ -76,7 +78,7 @@ No Intel binary is provided and Intel hardware has not been validated. API-key-o
 
 ## Install
 
-1. Download `CodexUsageBar-0.1.1-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
+1. Download `CodexUsageBar-0.1.2-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
 2. Open the DMG and drag **CodexUsageBar** into **Applications**.
 3. Eject the installation disk and launch the app from Applications.
 4. Optionally enable **Settings → Appearance & About → Launch at login**. The current UI is in Chinese.
@@ -123,13 +125,16 @@ python3 -m unittest discover -s tests -v
 node --check prototype/app.js
 ```
 
-The native suite currently contains 39 core checks and 9 heatmap hit-region checks. Optional real filesystem and account probes:
+The native suite includes 39 core checks, 9 heatmap hit-region checks, and recent-file selection across 1,000 logs. Optional window lifecycle, real filesystem, and account probes:
 
 ```sh
+bash scripts/test-native.sh --ui
 bash scripts/test-native.sh --watch
 .build/QuotaProbe
 .build/QuotaProbe --activity
 ```
+
+`--ui` exercises 30 settings-window cycles and 100 panel cycles with isolated preferences and no account requests, checking resource release, reopening, height retention, and menu artwork reuse. These checks do not validate extended uptime or real sleep/wake memory behavior.
 
 Live probes print masked account/usage metadata; review and redact their output before sharing. Restricted environments may block App Server, FSEvents, or disk-image operations; use a normal macOS terminal.
 

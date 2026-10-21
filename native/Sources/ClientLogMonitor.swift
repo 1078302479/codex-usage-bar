@@ -94,13 +94,28 @@ final class ClientLogMonitor: @unchecked Sendable {
     }
 
     private func watchRecentFiles() {
-        guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) else { return }
+        for url in Self.recentFiles(in: root) { watchFile(url.path) }
+    }
+
+    /// Retain only the newest candidates, rather than every historical log URL
+    /// (and its cached resource values). The per-entry pool bounds ObjC temporaries.
+    static func recentFiles(in root: URL, limit: Int = 24) -> [URL] {
+        guard limit > 0,
+              let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) else { return [] }
         var recent: [(URL, Date)] = []
-        for case let url as URL in files where url.pathExtension == "jsonl" {
+        recent.reserveCapacity(limit)
+        while autoreleasepool(invoking: {
+            guard let item = files.nextObject() else { return false }
+            guard let url = item as? URL, url.pathExtension == "jsonl" else { return true }
             let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            recent.append((url, date))
-        }
-        for (url, _) in recent.sorted(by: { $0.1 > $1.1 }).prefix(24) { watchFile(url.path) }
+            let index = recent.firstIndex { date > $0.1 || (date == $0.1 && url.path < $0.0.path) } ?? recent.endIndex
+            if index < limit {
+                if recent.count == limit { recent.removeLast() }
+                recent.insert((url, date), at: index)
+            }
+            return true
+        }) {}
+        return recent.map { $0.0 }
     }
 
     private func watchFile(_ path: String) {

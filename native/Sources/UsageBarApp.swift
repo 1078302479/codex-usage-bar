@@ -2,14 +2,27 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let state = AppState()
-    private var statusItem: NSStatusItem!
-    private let popover = NSPopover()
-    private var settingsWindow: NSWindow?
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
+    let state: AppState
+    private(set) var statusItem: NSStatusItem!
+    let popover = NSPopover()
+    private(set) var settingsWindow: NSWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var menuImageKey: MenuImageKey?
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    private struct MenuImageKey: Equatable {
+        let stacked: Bool
+        let lines: [String]
+        let showIcon: Bool
+        let appearance: AppAppearance
+    }
+
+    init(state: AppState = AppState()) {
+        self.state = state
+        super.init()
+    }
+
+    func configurePresentation() {
         NSApplication.shared.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -18,10 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         }
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: QuotaPanelView(state: state, openSettings: { [weak self] in self?.openSettings() }))
+        popover.delegate = self
         state.onPanelResize = { [weak self] height in self?.resizePopover(requestedHeight: height) }
         state.onDisplayChange = { [weak self] in self?.updatePresentation() }
-        updatePresentation(); state.start()
+        updatePresentation()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        configurePresentation()
+        state.start()
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.state.pause() }
@@ -35,17 +53,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updatePresentation() {
         guard let button = statusItem?.button else { return }
         let lines = QuotaPresentation.stackedLines(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
+        let imageKey = MenuImageKey(stacked: state.preferences.isStacked,
+                                   lines: state.preferences.isStacked ? lines : [],
+                                   showIcon: state.preferences.showIcon, appearance: state.preferences.appearance)
         if state.preferences.isStacked {
             button.title = ""
-            button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: state.preferences.showIcon)
+            if menuImageKey != imageKey {
+                button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: state.preferences.showIcon)
+            }
             button.imagePosition = .imageOnly
         } else {
             button.title = state.menuTitle
             if state.preferences.showIcon {
-                let image = ProviderIcon.codex()
-                button.image = image; button.imagePosition = .imageLeading
+                if menuImageKey != imageKey { button.image = ProviderIcon.codex() }
+                button.imagePosition = .imageLeading
             } else { button.image = nil }
         }
+        menuImageKey = imageKey
         button.toolTip = ["CodexUsageBar", state.snapshot?.accountLabel ?? "账号待核验", state.timestampLabel, state.watchDescription].joined(separator: "\n")
         button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : state.menuTitle))
         let appearance: NSAppearance?
@@ -73,11 +97,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if popover.isShown { popover.performClose(nil) } else { showPopover() }
     }
 
-    private func showPopover() {
+    func showPopover() {
         guard let button = statusItem.button else { return }
+        if popover.contentViewController == nil {
+            popover.contentViewController = NSHostingController(rootView: QuotaPanelView(state: state, openSettings: { [weak self] in self?.openSettings() }))
+        }
+        state.now = Date()
+        updatePresentation()
         resizePopover(requestedHeight: nil)
         state.panelOpened(); popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
+    }
+    func popoverDidClose(_ notification: Notification) {
+        // Detach the SwiftUI observer tree so background quota/timer publications
+        // cannot recompute or redraw a hidden panel. Business state stays alive.
+        guard !popover.isShown else { return }
+        popover.contentViewController = nil
+        state.panelDragStart = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === settingsWindow else { return }
+        window.delegate = nil
+        window.contentViewController = nil
+        settingsWindow = nil
     }
     private func resizePopover(requestedHeight: CGFloat?) {
         guard let button = statusItem?.button else { return }
@@ -94,13 +137,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentSize = size
     }
     @objc private func refreshQuota() { state.refresh() }
-    @objc private func openSettings() {
+    @objc func openSettings() {
         popover.performClose(nil)
         if settingsWindow == nil {
             let host = NSHostingController(rootView: UsageSettingsView(state: state))
             let window = NSWindow(contentViewController: host)
             window.title = "CodexUsageBar 设置"
             window.styleMask = [.titled, .closable, .miniaturizable]
+            window.delegate = self
             window.isReleasedWhenClosed = false; window.center()
             settingsWindow = window; updatePresentation()
         }
@@ -117,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+#if !STABILITY_TEST
 @main
 struct CodexUsageBarApplication {
     @MainActor static func main() {
@@ -129,3 +174,4 @@ struct CodexUsageBarApplication {
         withExtendedLifetime(delegate) { app.run() }
     }
 }
+#endif

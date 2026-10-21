@@ -7,7 +7,7 @@
 5. 生成 ZIP：
 
 ```sh
-ditto -c -k --sequesterRsrc --keepParent build/CodexUsageBar.app build/CodexUsageBar-0.1.1-mac-arm64.zip
+ditto -c -k --sequesterRsrc --keepParent build/CodexUsageBar.app build/CodexUsageBar-0.1.2-mac-arm64.zip
 ```
 
 6. 在 `build/` 为 DMG 和 ZIP 生成 `SHA256SUMS.txt`，校验包内可执行文件与本次构建一致。

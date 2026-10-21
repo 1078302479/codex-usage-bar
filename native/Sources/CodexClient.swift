@@ -117,7 +117,7 @@ actor CodexClient {
         path = executable
         do { try task.run() } catch { shutdown(); throw CodexFailure.processStopped }
         do {
-            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.1"]])
+            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.2"]])
             try send(["method": "initialized", "params": [:]])
             ready = true
         } catch { shutdown(); throw error }
