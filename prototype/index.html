@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>UsageBar · 菜单栏界面预览</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%235675e5'/%3E%3Cpath d='M9 22V16M16 22V10M23 22V13' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body data-theme="dark">
+  <header class="preview-header">
+    <a href="#overview" class="preview-brand" aria-label="UsageBar 原型首页"><span class="brand-logo"><i></i><i></i><i></i></span><strong>UsageBar</strong><span class="preview-caption">macOS 界面原型</span></a>
+    <nav class="view-switch" aria-label="预览界面">
+      <button data-view="overview" class="selected">菜单栏</button>
+      <button data-view="sessions">会话明细</button>
+      <button data-view="settings">设置</button>
+    </nav>
+    <div class="preview-actions"><span class="prototype-badge"><span></span>交互原型</span><button id="theme-toggle" class="toolbar-icon" aria-label="切换明暗主题" title="切换明暗主题"></button></div>
+  </header>
+  <main class="desktop" aria-label="macOS 桌面预览">
+    <div class="wallpaper" aria-hidden="true"><div class="wallpaper-orb"></div><svg viewBox="0 0 1500 920" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="ridge1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6d849b"/><stop offset="1" stop-color="#2d4963"/></linearGradient><linearGradient id="ridge2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4e6e8c"/><stop offset="1" stop-color="#273e58"/></linearGradient><linearGradient id="ridge3" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#244760"/><stop offset="1" stop-color="#13283e"/></linearGradient></defs><path d="M-100 850 Q200 430 540 310 Q690 250 840 400 Q1040 700 1600 480 L1600 1000 L-100 1000Z" fill="url(#ridge1)"/><path d="M-100 1000 Q250 720 540 465 Q650 370 850 500 Q1100 700 1600 660 L1600 1000Z" fill="url(#ridge2)"/><path d="M-100 1100 Q140 1000 420 740 Q650 510 780 595 Q1030 800 1600 790 L1600 1100Z" fill="url(#ridge3)"/></svg></div>
+    <div class="mac-menubar">
+      <div class="mac-left"><span class="apple" aria-hidden="true"></span><b>UsageBar</b><span class="mac-menu-text">文件</span><span class="mac-menu-text">编辑</span><span class="mac-menu-text">显示</span></div>
+      <div class="mac-right"><button id="menu-indicator" aria-label="打开 UsageBar 菜单栏面板"></button><span class="system-icons" id="system-icons"></span><time>10月20日 周二 14:31</time></div>
+    </div>
+    <aside class="preview-inspector">
+      <div class="inspector-heading"><span class="inspector-rule"></span><span>预览状态</span></div>
+      <h1>每一份额度，<br>一眼有数。</h1>
+      <p>常驻菜单栏，让用量回到视线之内。</p>
+      <div class="scenario-list" role="group" aria-label="界面演示状态">
+        <button data-scenario="normal" class="selected"><span class="scenario-dot normal"></span>正常用量<span class="scenario-check"></span></button>
+        <button data-scenario="low"><span class="scenario-dot low"></span>额度不足<span class="scenario-check"></span></button>
+        <button data-scenario="stale"><span class="scenario-dot stale"></span>快照过期<span class="scenario-check"></span></button>
+        <button data-scenario="disconnected"><span class="scenario-dot disconnected"></span>尚未连接<span class="scenario-check"></span></button>
+      </div>
+      <div class="data-control"><span id="data-mode-label">当前为演示数据</span><button id="read-local">读取本机快照 <span>↗</span></button></div>
+    </aside>
+    <section id="app-root" aria-label="UsageBar 应用界面"></section>
+    <div class="desktop-bottom"><span>为 macOS 菜单栏而设计</span><span id="stage-mode">所有数值均为示例，可在设置中连接本机</span></div>
+  </main>
+  <footer class="preview-footer"><span><span class="footer-dot"></span>本地优先，信息恰到好处。</span><span>界面原型 v0.1 <span class="footer-divider">/</span> 使用系统字体与原生交互习惯</span></footer>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

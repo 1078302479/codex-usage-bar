@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.DS_Store
+.local/
+.build/
+build/
+
+# Local design history and screenshots contain personal account/usage information.
+/docs/plans/
+/docs/previews/
+/native/Resources/CodexServiceIcon.png
+.env
+.env.*
+!.env.example
+*.log

@@ -1,0 +1,23 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Native checks
+        run: bash scripts/test-native.sh
+      - name: Python adapter checks
+        run: python3 -m unittest discover -s tests -v
+      - name: Prototype syntax
+        run: node --check prototype/app.js
+      - name: Compile native app
+        run: bash scripts/build-native.sh
