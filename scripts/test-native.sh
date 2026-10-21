@@ -7,6 +7,12 @@ xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/QuotaModels.swift" "$ROOT/nativ
 xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Sources/ActivityHeatmap.swift" "$ROOT/native/Tests/HeatmapTests.swift" -o "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/QuotaCoreTests"
+xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/RecoveryTests.swift" -o "$ROOT/.build/RecoveryTests"
+if [[ "${1:-}" == "--transport" ]]; then
+  "$ROOT/.build/RecoveryTests" --transport
+else
+  "$ROOT/.build/RecoveryTests"
+fi
 xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/StabilityTests.swift" -o "$ROOT/.build/StabilityTests"
 if [[ "${1:-}" == "--ui" ]]; then
   "$ROOT/.build/StabilityTests" --ui

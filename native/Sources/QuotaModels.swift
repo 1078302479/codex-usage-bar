@@ -205,19 +205,29 @@ enum QuotaPresentation {
     }
 }
 
-enum CodexFailure: Error, LocalizedError, Sendable {
+enum CodexFailure: Error, LocalizedError, Sendable, Equatable {
     case missingCLI, authRequired, unsupported, timeout, processStopped, invalidResponse, accountChanged, noQuota, permissionDenied
+    case networkUnavailable, serviceUnavailable
+
+    var canRetry: Bool {
+        switch self {
+        case .networkUnavailable, .serviceUnavailable, .timeout, .processStopped, .accountChanged, .noQuota: return true
+        case .missingCLI, .authRequired, .unsupported, .permissionDenied, .invalidResponse: return false
+        }
+    }
     var errorDescription: String? {
         switch self {
         case .missingCLI: return "未找到 Codex CLI，请在设置中选择本机可执行文件。"
         case .authRequired: return "本机 Codex 尚未提供可用的 ChatGPT 登录，请在终端完成 codex login 后重试。"
         case .unsupported: return "当前 Codex 版本不支持额度读取，请更新 Codex。"
-        case .timeout: return "额度查询超时，保留上次记录并等待重新核验。"
-        case .processStopped: return "Codex 连接已断开，请重新查询。"
-        case .invalidResponse: return "返回的数据格式无法确认，暂不显示新的额度。"
+        case .timeout: return "额度查询超时，将自动重新核验，也可点击刷新立即重试。"
+        case .processStopped: return "Codex 连接已断开，将自动重连，也可点击刷新立即重试。"
+        case .invalidResponse: return "返回的数据格式无法确认。请检查或更新本机 Codex，再点击刷新重试。"
         case .accountChanged: return "查询期间登录账号发生变化，正在等待重新核验。"
         case .noQuota: return "当前账号未返回可展示的套餐额度。"
         case .permissionDenied: return "当前运行环境阻止了 Codex 启动，请确认应用有正常的本机运行权限。"
+        case .networkUnavailable: return "网络请求失败，请检查网络或代理。将自动重试，也可点击刷新立即重试。"
+        case .serviceUnavailable: return "服务暂时不可用或请求受限，将稍后自动重试。"
         }
     }
 }

@@ -6,9 +6,17 @@ private final class OwnedProcess: @unchecked Sendable {
     init(_ process: Process) { self.process = process }
 }
 
-enum CodexSignal: Sendable { case quotaChanged, accountChanged, disconnected }
+enum CodexSignal: Sendable { case quotaChanged, accountChanged, disconnected(CodexFailure) }
 
-actor CodexClient {
+protocol QuotaClient: Sendable {
+    func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) async
+    func fetch(customPath: String) async throws -> QuotaSnapshot
+    func fetchUsage(expectedScope: String) async throws -> TokenActivity
+    func shutdown() async
+}
+
+actor CodexClient: QuotaClient {
+    private let requestTimeout: TimeInterval
     private var process: Process?
     private var input: FileHandle?
     private var output: FileHandle?
@@ -25,6 +33,11 @@ actor CodexClient {
     private var lastBuckets: [String: Data] = [:]
     private var deferredUpdates: [Data] = []
     private var readingQuota = false
+
+    init(requestTimeout: TimeInterval = 12) {
+        precondition(requestTimeout > 0 && requestTimeout.isFinite)
+        self.requestTimeout = requestTimeout
+    }
 
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) { handler = value }
 
@@ -43,23 +56,25 @@ actor CodexClient {
     }
 
     func fetch(customPath: String) async throws -> QuotaSnapshot {
+        try Task.checkCancellation()
         let executable = try Self.discover(custom: customPath)
-        if process?.isRunning != true || path != executable { try await start(executable) }
+        if process?.isRunning != true || path != executable || !ready { try await start(executable) }
+        try Task.checkCancellation()
         guard ready else { throw CodexFailure.processStopped }
+        let token = generation
         let decoder = JSONDecoder()
         let before = try decoder.decode(AccountResponse.self, from: await rpc("account/read", params: ["refreshToken": false])).account
+        try checkSession(token)
         if before?.type?.lowercased() == "apikey" || before?.type?.lowercased() == "amazonbedrock" { throw CodexFailure.authRequired }
         readingQuota = true
-        defer { readingQuota = false }
-        let raw: Data
-        do { raw = try await rpc("account/rateLimits/read") }
-        catch { readingQuota = false; deferredUpdates.removeAll(); throw error }
+        defer { if generation == token { readingQuota = false; deferredUpdates.removeAll() } }
+        let raw = try await rpc("account/rateLimits/read")
+        try checkSession(token)
         let response = try decoder.decode(RateLimitsResponse.self, from: raw)
         let buckets = response.buckets()
-        guard !buckets.isEmpty else { readingQuota = false; throw CodexFailure.noQuota }
-        let after: AccountInfo?
-        do { after = try decoder.decode(AccountResponse.self, from: await rpc("account/read", params: ["refreshToken": false])).account }
-        catch { readingQuota = false; throw error }
+        guard !buckets.isEmpty else { throw CodexFailure.noQuota }
+        let after = try decoder.decode(AccountResponse.self, from: await rpc("account/read", params: ["refreshToken": false])).account
+        try checkSession(token)
         guard before?.scopeKey == after?.scopeKey, before?.type == after?.type else {
             readingQuota = false; lastBuckets.removeAll(); deferredUpdates.removeAll()
             throw CodexFailure.accountChanged
@@ -81,11 +96,15 @@ actor CodexClient {
     }
 
     func fetchUsage(expectedScope: String) async throws -> TokenActivity {
+        let token = generation
         let decoder = JSONDecoder()
         let before = try decoder.decode(AccountResponse.self, from: await rpc("account/read", params: ["refreshToken": false])).account
+        try checkSession(token)
         guard before?.scopeKey == expectedScope else { throw CodexFailure.accountChanged }
         let raw = try await rpc("account/usage/read")
+        try checkSession(token)
         let after = try decoder.decode(AccountResponse.self, from: await rpc("account/read", params: ["refreshToken": false])).account
+        try checkSession(token)
         guard before?.scopeKey == after?.scopeKey, after?.scopeKey == expectedScope else { throw CodexFailure.accountChanged }
         return try decoder.decode(TokenActivity.self, from: raw)
     }
@@ -117,13 +136,20 @@ actor CodexClient {
         path = executable
         do { try task.run() } catch { shutdown(); throw CodexFailure.processStopped }
         do {
-            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.2"]])
+            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.3"]])
+            try checkSession(current)
             try send(["method": "initialized", "params": [:]])
             ready = true
-        } catch { shutdown(); throw error }
+        } catch { if generation == current { shutdown() }; throw error }
+    }
+
+    private func checkSession(_ token: UUID) throws {
+        try Task.checkCancellation()
+        guard generation == token else { throw CodexFailure.processStopped }
     }
 
     private func rpc(_ method: String, params: [String: Any]? = nil) async throws -> Data {
+        try Task.checkCancellation()
         guard ["initialize", "account/read", "account/rateLimits/read", "account/usage/read"].contains(method), process?.isRunning == true else { throw CodexFailure.processStopped }
         counter += 1; let id = counter; let token = generation
         var message: [String: Any] = ["id": id, "method": method]
@@ -131,8 +157,9 @@ actor CodexClient {
         let payload = try JSONSerialization.data(withJSONObject: message) + Data([10])
         return try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation
+            let timeout = requestTimeout
             deadlines[id] = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(12)) } catch { return }
+                do { try await Task.sleep(for: .seconds(timeout)) } catch { return }
                 await self?.expire(id, generation: token)
             }
             do { try input?.write(contentsOf: payload) }
@@ -154,9 +181,7 @@ actor CodexClient {
             guard let value = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
             if let id = value["id"] as? Int, pending[id] != nil {
                 if let error = value["error"] as? [String: Any] {
-                    let text = (error["message"] as? String ?? "").lowercased()
-                    let reason: CodexFailure = text.contains("auth") || text.contains("logged in") ? .authRequired : text.contains("method not found") ? .unsupported : .invalidResponse
-                    resolve(id, result: .failure(reason))
+                    resolve(id, result: .failure(Self.classifyRPCError(error)))
                 } else if let result = value["result"], let raw = try? JSONSerialization.data(withJSONObject: result, options: [.fragmentsAllowed]) {
                     resolve(id, result: .success(raw))
                 } else { resolve(id, result: .failure(CodexFailure.invalidResponse)) }
@@ -213,7 +238,21 @@ actor CodexClient {
         guard token == generation else { return }
         let denied = String(data: errorTail, encoding: .utf8)?.contains("Operation not permitted") == true
         ready = false; failAll(denied ? .permissionDenied : .processStopped)
-        handler?(.disconnected)
+        handler?(.disconnected(denied ? .permissionDenied : .processStopped))
+    }
+
+    /// Classify only transport/protocol errors; never expose server error text or credentials.
+    static func classifyRPCError(_ error: [String: Any]) -> CodexFailure {
+        let text = (error["message"] as? String ?? "").lowercased()
+        let code = error["code"] as? Int
+        let data = error["data"] as? [String: Any] ?? [:]
+        let status = (data["statusCode"] ?? data["status_code"] ?? data["http_status_code"] ?? error["statusCode"]) as? Int
+        if code == -32601 || text.contains("method not found") || text.contains("unsupported method") { return .unsupported }
+        if status == 401 || ["unauthorized", "not authenticated", "authentication", "not logged in", "login required", "token expired", "refresh token"].contains(where: text.contains) { return .authRequired }
+        if text.contains("timeout") || text.contains("timed out") { return .timeout }
+        if ["network", "dns", "connection refused", "connection reset", "error sending request", "failed to send request", "offline", "temporary failure"].contains(where: text.contains) { return .networkUnavailable }
+        if code == -32600 || code == -32602 { return .invalidResponse }
+        return .serviceUnavailable
     }
     func shutdown() {
         generation = UUID(); ready = false

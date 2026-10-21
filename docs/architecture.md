@@ -31,6 +31,16 @@ Startup, panel opening, wake, reset boundaries, and explicit refresh also valida
 
 This is a local observation strategy, not a guarantee of matching an undocumented client refresh interval. Other-device updates may remain invisible until the next service query.
 
+## 恢复与状态 / Recovery and status (v0.1.3)
+
+AppState owns one refresh chain, one coalesced event task, and at most one retry task. Recoverable failures use 5/15/30/60/120/300-second backoff. Automatic events, polling, and panel opening do not bypass a pending retry or a user-action error; explicit refresh can retry immediately. Healthy event-following mode does not gain periodic polling. NWPathMonitor is only a hint to expedite a retry after an offline-to-online transition; it does not prove service availability.
+
+Sleep, stop, account changes, and CLI configuration changes advance an epoch and invalidate old request ownership. New requests wait for prior shutdown tasks. The client also checks its process generation after asynchronous RPC boundaries, so old continuations cannot mutate or shut down a replacement connection. Sleep cancels retries and timers; duplicate wake callbacks coalesce into one delayed validation.
+
+状态区与菜单栏提示区分已核验、过期、重置待确认、查询中、网络请求失败、超时、连接断开、需要登录、版本不兼容、程序/权限问题及无额度。最近成功时间只来自成功的查询；启动缓存不能伪装为本次成功核验。失败消息不展示原始服务端错误或凭证。Token 活动不支持时只影响活动区，保持额度功能可用。
+
+Tests use isolated preferences and synthetic clients by default. Optional real-stdio fixtures test failures, child termination, deadlines, and simulated sleep/wake without changing system connectivity or sleep. Physical sleep/wake, real network interruption, and extended uptime remain separate manual acceptance work.
+
 ## 准确性 / Accuracy
 
 - 两个窗口独立，剩余为 `100 − usedPercent`。

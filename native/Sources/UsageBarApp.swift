@@ -70,7 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             } else { button.image = nil }
         }
         menuImageKey = imageKey
-        button.toolTip = ["CodexUsageBar", state.snapshot?.accountLabel ?? "账号待核验", state.timestampLabel, state.watchDescription].joined(separator: "\n")
+        button.toolTip = ["CodexUsageBar", state.snapshot?.accountLabel ?? "账号待核验", state.updateStatus.title,
+                          state.statusDetail, state.timestampLabel, state.watchDescription].joined(separator: "\n")
         button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : state.menuTitle))
         let appearance: NSAppearance?
         switch state.preferences.appearance {

@@ -43,17 +43,17 @@ struct QuotaPanelView: View {
 
             TokenActivityView(state: state)
 
-            if let message = state.errorMessage {
-                statusNote(message, symbol: "exclamationmark.triangle", warning: true)
-            } else if !state.verified {
-                statusNote(state.isRefreshing ? "正在核验登录账号与套餐额度…" : "点击刷新，读取本机登录账号的额度。", symbol: "person.crop.circle.badge.checkmark", warning: false)
-            } else if state.bucket?.spendControlReached == true || state.bucket?.rateLimitReachedType != nil {
+            statusNote(state.updateStatus.title + " · " + state.statusDetail,
+                       symbol: state.updateStatus.symbol, warning: state.updateStatus.isWarning)
+            if state.lastFailure?.canRetry == false {
+                Button("打开连接设置处理") { state.settingsTab = .connection; openSettings() }
+                    .font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 14)
+            }
+            if state.verified && (state.bucket?.spendControlReached == true || state.bucket?.rateLimitReachedType != nil) {
                 statusNote("服务商报告了使用限制，请同时查看 Codex 客户端提示。", symbol: "exclamationmark.triangle", warning: true)
-            } else if state.isStale {
-                statusNote("超过 5 分钟未核验，显示上次记录；菜单栏以 * 标记。", symbol: "clock", warning: true)
             }
             VStack(alignment: .leading, spacing: 8) {
-                Label(state.timestampLabel + (state.verified ? " · 服务商返回" : " · 待核验"), systemImage: "checkmark.shield")
+                Label(state.timestampLabel, systemImage: "checkmark.shield")
                 Label(state.watchDescription, systemImage: state.preferences.refreshMode == .followClient ? "waveform.path" : "clock")
                 if let date = state.lastClientChange {
                     Text("最近客户端变化 " + QuotaPresentation.time(date)).padding(.leading, 19)
@@ -156,7 +156,7 @@ struct UsageSettingsView: View {
         Binding(get: { state.preferences[keyPath: key] }, set: { state.preferences[keyPath: key] = $0 })
     }
     var body: some View {
-        TabView {
+        TabView(selection: $state.settingsTab) {
             Form {
                 Section("菜单栏显示内容") {
                     Toggle("显示菜单栏图标", isOn: bind(\.showIcon))
@@ -202,7 +202,7 @@ struct UsageSettingsView: View {
                     Text("修改立即应用到真正的 macOS 菜单栏。* 表示旧快照，-- 表示未知或重置待确认。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("菜单栏", systemImage: "menubar.rectangle") }
+            }.formStyle(.grouped).tabItem { Label("菜单栏", systemImage: "menubar.rectangle") }.tag(SettingsTab.menuBar)
 
             Form {
                 Section("额度更新") {
@@ -211,7 +211,10 @@ struct UsageSettingsView: View {
                     }
                     Text("默认跟随本机客户端额度变化：监听客户端写入和额度通知，再向服务商核验。不会把固定的 5 分钟轮询称为客户端频率。")
                         .font(.caption).foregroundStyle(.secondary)
-                    LabeledContent("当前状态", value: state.watchDescription)
+                    LabeledContent("当前状态", value: state.updateStatus.title)
+                    Text(state.statusDetail).font(.caption)
+                        .foregroundStyle(state.updateStatus.isWarning ? Color.orange : Color.secondary)
+                    LabeledContent("更新方式", value: state.watchDescription)
                     LabeledContent("最近更新", value: state.timestampLabel)
                     if let date = state.lastClientChange { LabeledContent("客户端变化", value: QuotaPresentation.time(date)) }
                     Button(state.isRefreshing ? "正在核验…" : "立即核验登录与额度") { state.refresh() }.disabled(state.isRefreshing)
@@ -233,7 +236,7 @@ struct UsageSettingsView: View {
                     Text("直接展示服务商返回的已用比例，以 100 − 已用计算剩余；两个窗口不相加。日志只用于触发核验，不覆盖当前账号额度。重置时间到达后等待新响应，不凭空补成 100%。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("连接与更新", systemImage: "arrow.triangle.2.circlepath") }
+            }.formStyle(.grouped).tabItem { Label("连接与更新", systemImage: "arrow.triangle.2.circlepath") }.tag(SettingsTab.connection)
 
             Form {
                 LoginItemSettingsView(controller: state.loginItem)
@@ -243,12 +246,12 @@ struct UsageSettingsView: View {
                     }
                 }
                 Section("关于 CodexUsageBar") {
-                    LabeledContent("版本", value: "0.1.2")
+                    LabeledContent("版本", value: "0.1.3")
                     Text("只读套餐额度，常驻 macOS 菜单栏。时间按北京时间显示。")
                     Text("Token 活动来自官方账号统计；支持登录时自动启动，当前不包含系统通知。")
                         .foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("外观与关于", systemImage: "circle.lefthalf.filled") }
+            }.formStyle(.grouped).tabItem { Label("外观与关于", systemImage: "circle.lefthalf.filled") }.tag(SettingsTab.appearance)
         }
         .frame(width: 590, height: 650)
         .padding(.top, 10)
