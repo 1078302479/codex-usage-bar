@@ -27,15 +27,21 @@ This is an independent community project, not an official OpenAI application or 
 
 Captured from **v0.1.1** running on the maintainer's Mac on 2026-10-21. Account information has been covered. Quota and token values reflect only the account state at capture time. The current UI is Chinese.
 
+### Actual menu bar appearance
+
+The native menu bar shows two stacked rows: **weekly remaining allowance and reset date** above **5-hour remaining allowance and reset time**, with the Codex icon on the left. Click to open the quota panel. Displayed metrics, labels, and separators are configurable.
+
+<img src="docs/images/screenshots/menubar-live.png" width="440" alt="Actual macOS menu bar: 7d 75% / 10-27 above 5h 98% / 18:52, with the CodexUsageBar panel open and account covered">
+
 ### Quota panel and token activity
 
 Click the menu bar item to see remaining allowance, reset times, and validation status for two independent windows. The panel also shows lifetime tokens, peak daily usage, activity streaks, and six months of daily activity. Hover over or click a heatmap date to inspect details.
 
 <table>
-  <tr><th>Full quota panel</th><th>Token activity detail (crop)</th></tr>
+  <tr><th>Full quota panel</th><th>Token activity and date tooltip (crop)</th></tr>
   <tr>
     <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="Actual quota panel with short-term and weekly allowance, resets, token summaries, and heatmap"></td>
-    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Lifetime and peak tokens, activity streaks, longest turn, and daily heatmap"></td>
+    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Token summaries and daily heatmap with a tooltip showing 2026-10-14 and 219,779,583 Token"></td>
   </tr>
 </table>
 

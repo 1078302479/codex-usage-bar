@@ -28,6 +28,12 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 
 以下为维护者在 macOS 上运行 **v0.1.1** 的实际截图（2026-10-21），账号信息已遮盖。额度和 Token 数值仅代表截图时的账号状态；界面当前为中文。
 
+### 菜单栏实际效果
+
+原生菜单栏双行显示：上方为 **7 天剩余与重置日期**，下方为 **5 小时剩余与重置时间**，左侧为 Codex 图标。点击后展开额度面板；显示内容、标签和分隔符均可在设置中调整。
+
+<img src="docs/images/screenshots/menubar-live.png" width="440" alt="macOS 菜单栏实际双行效果：上方 7d 75% / 10-27，下方 5h 98% / 18:52，点击展开 CodexUsageBar 面板；账号已遮盖">
+
 ### 额度面板与 Token 活动
 
 点击菜单栏即可查看两个独立窗口的剩余额度、重置时间及核验状态；下方展示累计 Token、单日峰值、连续活跃天数与近半年每日活动。热力图支持悬停或点击日期查看详情。
@@ -35,11 +41,11 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 <table>
   <tr>
     <th>完整额度面板</th>
-    <th>Token 统计与活动热力图（局部）</th>
+    <th>Token 统计与热力图日期提示（局部）</th>
   </tr>
   <tr>
     <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="CodexUsageBar 实际额度面板：5 小时与 7 天剩余额度、重置时间、Token 统计和热力图"></td>
-    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Token 累计、单日峰值、连续活跃天数、最长单轮与每日活动热力图"></td>
+    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Token 统计与活动热力图，日期提示框显示 2026-10-14 和 219,779,583 Token"></td>
   </tr>
 </table>
 
