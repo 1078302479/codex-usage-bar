@@ -66,6 +66,7 @@ final class AppState: ObservableObject {
     private var queuedReason: String?
     private var disconnectDuringRefresh: CodexFailure?
     private var configurationEpoch = 0
+    private var accountEpoch = 0
     private var retryAttempt = 0
     private var resetKey = ""
     private var resetAttempts = 0
@@ -142,8 +143,16 @@ final class AppState: ObservableObject {
         case .quotaChanged:
             if preferences.refreshMode == .followClient { scheduleRefresh(reason: "额度变化通知", delay: recovery.mergeDelay) }
         case .accountChanged:
-            invalidateConnection(); clearAccount(); lastFailure = nil; retryAttempt = 0
-            onDisplayChange?(); scheduleRefresh(reason: "登录状态变化", delay: recovery.mergeDelay)
+            // App Server also emits account/updated during initialization. Keep
+            // this connection alive; invalidate its in-flight data and revalidate
+            // on the same connection instead of restarting initialization forever.
+            accountEpoch += 1
+            clearAccount(); lastFailure = nil; retryAttempt = 0; cancelRetry()
+            resetTimer?.invalidate(); resetTimer = nil
+            scheduledRefresh?.cancel(); scheduledRefresh = nil
+            if isRefreshing { queuedReason = "登录状态变化" }
+            else { scheduleRefresh(reason: "登录状态变化", delay: recovery.mergeDelay) }
+            onDisplayChange?()
         case .disconnected(let failure):
             if isRefreshing { disconnectDuringRefresh = failure }
             else if lastFailure?.canRetry != false { recordFailure(failure) }
@@ -188,7 +197,8 @@ final class AppState: ObservableObject {
         if manual { cancelRetry(); retryAttempt = 0 }
         isRefreshing = true; lastReason = reason; now = Date(); disconnectDuringRefresh = nil
         onDisplayChange?()
-        let epoch = configurationEpoch; let custom = preferences.cliPath; let request = UUID()
+        let epoch = configurationEpoch; let identity = accountEpoch
+        let custom = preferences.cliPath; let request = UUID()
         activeRequest = request
         let barrier = connectionBarrier
         refreshTask = Task { [weak self, client] in
@@ -206,6 +216,7 @@ final class AppState: ObservableObject {
                 try Task.checkCancellation()
                 let result = try await client.fetch(customPath: custom)
                 guard isCurrent(request, epoch: epoch) else { return }
+                guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil }
                 snapshot = result; verified = true; lastFailure = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 cancelRetry()
@@ -216,10 +227,13 @@ final class AppState: ObservableObject {
                     do {
                         try Task.checkCancellation()
                         let activity = try await client.fetchUsage(expectedScope: scope)
-                        guard isCurrent(request, epoch: epoch), snapshot?.accountScope == scope else { return }
+                        guard isCurrent(request, epoch: epoch) else { return }
+                        guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
+                        guard snapshot?.accountScope == scope else { finishRefresh(request, epoch: epoch); return }
                         tokenActivity = activity; activityUpdatedAt = Date(); activityError = nil
                     } catch {
                         guard isCurrent(request, epoch: epoch) else { return }
+                        guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                         let failure = Self.failure(error)
                         activityError = failure == .unsupported ? "当前 Codex 不支持官方 Token 活动；额度核验不受影响。" : "官方 Token 活动暂不可用，可点击刷新重试。"
                         if failure == .accountChanged || failure == .authRequired { recordFailure(failure) }
@@ -228,17 +242,22 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 guard isCurrent(request, epoch: epoch) else { return }
+                guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                 recordFailure(Self.failure(error))
             }
-            guard isCurrent(request, epoch: epoch) else { return }
-            isRefreshing = false; activeRequest = nil; refreshTask = nil
-            if lastFailure == nil, let failure = disconnectDuringRefresh { recordFailure(failure) }
-            disconnectDuringRefresh = nil
-            let followup = queuedReason; queuedReason = nil
-            if lastFailure == nil { retryAttempt = 0 }
-            onDisplayChange?()
-            if lastFailure == nil, let followup { scheduleRefresh(reason: followup, delay: recovery.mergeDelay) }
+            finishRefresh(request, epoch: epoch)
         }
+    }
+
+    private func finishRefresh(_ request: UUID, epoch: Int) {
+        guard isCurrent(request, epoch: epoch) else { return }
+        isRefreshing = false; activeRequest = nil; refreshTask = nil
+        if lastFailure == nil, let failure = disconnectDuringRefresh { recordFailure(failure) }
+        disconnectDuringRefresh = nil
+        let followup = queuedReason; queuedReason = nil
+        if lastFailure == nil { retryAttempt = 0 }
+        onDisplayChange?()
+        if lastFailure == nil, let followup { scheduleRefresh(reason: followup, delay: recovery.mergeDelay) }
     }
 
     private func isCurrent(_ request: UUID, epoch: Int) -> Bool {

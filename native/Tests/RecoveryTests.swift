@@ -39,6 +39,7 @@ private actor TestQuotaClient: QuotaClient {
         try await userActionErrors()
         try await networkRecovery()
         try await coalescing()
+        try await accountNotification()
         try await sleepAndLateResults()
         try await sleepCancelsRetry()
         try await sourceChange()
@@ -174,6 +175,26 @@ private actor TestQuotaClient: QuotaClient {
         print("PASS: sleep/wake cancellation, duplicate wake coalescing and stale-result rejection")
     }
 
+    @MainActor static func accountNotification() async throws {
+        let client = TestQuotaClient([.held, .value(snapshot("new-account"))])
+        let (state, defaults, suite) = makeState(client)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        state.refresh()
+        try await eventually("initial account query") { await client.calls == 1 }
+        await client.emit(.accountChanged)
+        try await eventually("account change queued") { state.snapshot == nil }
+        // Give the signal a main-actor turn before releasing the old response.
+        try await Task.sleep(for: .milliseconds(10))
+        require(state.isRefreshing, "An account notification must not tear down initialization")
+        await client.release(snapshot("old-account"))
+        try await eventually("account revalidation") { state.verified && !state.isRefreshing }
+        require(state.snapshot?.accountScope == "new-account", "Account notifications invalidate older results")
+        require(await client.calls == 2, "Account changes coalesce into one same-connection revalidation")
+        require(await client.maximumActive == 1, "Account revalidation cannot overlap the old request")
+        await state.stop()
+        print("PASS: initialization account notifications preserve the connection and reject old account results")
+    }
+
     @MainActor static func sourceChange() async throws {
         let client = TestQuotaClient([.held, .value(snapshot("new-source"))])
         let (state, defaults, suite) = makeState(client)
@@ -251,7 +272,9 @@ for line in sys.stdin:
         error = {'code': -32601, 'message': 'Method not found'} if mode == 'unsupported' else {'code': -32000, 'message': 'error sending request: network unreachable'}
         print(json.dumps({'id': m['id'], 'error': error}), flush=True)
         continue
-    if method == 'initialize': result = {'userAgent': 'fixture'}
+    if method == 'initialize':
+        print(json.dumps({'method': 'account/updated', 'params': {'planType': 'plus'}}), flush=True)
+        result = {'userAgent': 'fixture'}
     elif method == 'account/read': result = {'account': {'type': 'chatgpt', 'id': 'fixture', 'planType': 'plus'}}
     elif method == 'account/rateLimits/read': result = {'rateLimits': {'limitId': 'codex', 'primary': {'usedPercent': 10, 'windowDurationMins': 300, 'resetsAt': time.time()+3600}}}
     else: result = {'summary': None, 'dailyUsageBuckets': None}
