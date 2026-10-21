@@ -23,6 +23,40 @@ This is an independent community project, not an official OpenAI application or 
 - Event-following refresh by default, with optional 1-, 5-, and 15-minute polling.
 - Light, dark, and system appearance; an expanding/resizable popover; macOS login-item support.
 
+## Screenshots
+
+Captured from **v0.1.1** running on the maintainer's Mac on 2026-10-21. Account information has been covered. Quota and token values reflect only the account state at capture time. The current UI is Chinese.
+
+### Quota panel and token activity
+
+Click the menu bar item to see remaining allowance, reset times, and validation status for two independent windows. The panel also shows lifetime tokens, peak daily usage, activity streaks, and six months of daily activity. Hover over or click a heatmap date to inspect details.
+
+<table>
+  <tr><th>Full quota panel</th><th>Token activity detail (crop)</th></tr>
+  <tr>
+    <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="Actual quota panel with short-term and weekly allowance, resets, token summaries, and heatmap"></td>
+    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Lifetime and peak tokens, activity streaks, longest turn, and daily heatmap"></td>
+  </tr>
+</table>
+
+### Menu bar customization and refresh
+
+Choose which quota and reset values appear, enable stacked rows, and configure labels and separators. Refresh follows local Codex changes and validates against the service by default. Connection settings show update status and let you select the local Codex executable.
+
+<table>
+  <tr><th>Menu bar contents and layout</th><th>Connection and refresh</th></tr>
+  <tr>
+    <td valign="top"><img src="docs/images/screenshots/menubar-settings.png" width="480" alt="Menu bar settings for metrics, stacked weekly and short-term rows, labels, and separators"></td>
+    <td valign="top"><img src="docs/images/screenshots/connection.png" width="480" alt="Client-following refresh, validation status, plan, and executable settings; account covered"></td>
+  </tr>
+</table>
+
+### Appearance and launch at login
+
+Choose light, dark, or system appearance and optionally launch at login. This Mac currently uses system appearance, with launch at login disabled.
+
+<img src="docs/images/screenshots/appearance.png" width="640" alt="Appearance settings showing launch at login, system theme, and app version">
+
 ## Requirements
 
 | Item | Requirement |
