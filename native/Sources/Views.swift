@@ -8,113 +8,13 @@ struct QuotaPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(nsImage: ProviderIcon.codex(size: 17)).renderingMode(.template).foregroundStyle(Color.accentColor)
-                Text("CodexUsageBar").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                if state.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.75) }
-                Button { state.refresh() } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.plain).disabled(state.isRefreshing).help("向服务商核验额度").accessibilityLabel("刷新额度")
-            }.padding(.horizontal, 20).padding(.vertical, 15)
+            panelHeader
             Divider()
-            ScrollView(.vertical) {
-                VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Capsule().fill(PanelPalette.accountAccent)
-                    .frame(width: 3, height: 34).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Codex 账号").font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(PanelPalette.secondary)
-                    Text(state.snapshot?.accountLabel ?? "当前登录待核验")
-                        .font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }.layoutPriority(1)
-                Spacer(minLength: 8)
-                HStack(spacing: 5) {
-                    Circle().fill(PanelPalette.accountAccent).frame(width: 5, height: 5)
-                        .accessibilityHidden(true)
-                    Text(state.snapshot?.planType?.capitalized ?? "待确认")
-                        .font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
-                }
-                .foregroundStyle(PanelPalette.accountAccent)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(PanelPalette.accountAccent.opacity(0.10), in: Capsule())
-                .accessibilityLabel("套餐 " + (state.snapshot?.planType?.capitalized ?? "待确认"))
-            }.frame(height: 36)
-                .padding(.horizontal, 20).padding(.vertical, 14)
-                .accessibilityElement(children: .combine)
-
-
-
-            if let buckets = state.snapshot?.buckets, buckets.count > 1 {
-                Picker("额度桶", selection: Binding(get: { state.bucket?.id ?? "codex" }, set: { state.preferences.selectedBucket = $0 })) {
-                    ForEach(buckets) { bucket in Text(bucket.displayName).tag(bucket.id) }
-                }.font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 12)
-            }
-            HStack(alignment: .top, spacing: 10) {
-                QuotaWindowView(window: state.bucket?.primary, fallback: "短周期额度", large: true, state: state)
-                QuotaWindowView(window: state.bucket?.secondary, fallback: "长周期额度", large: false, state: state)
-            }.padding(.horizontal, 20).padding(.bottom, 14)
-
-            ResetCreditSectionView(state: state, openSettings: openSettings)
-
-            TokenActivityView(state: state)
-
-            HStack(spacing: 5) {
-                Label(state.updateStatus.title, systemImage: state.updateStatus.symbol)
-                    .foregroundStyle(state.updateStatus.isWarning ? PanelPalette.warning : PanelPalette.secondary)
-                if let date = state.lastSuccessfulAt {
-                    Text(QuotaPresentation.time(date)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
-                }
-                Spacer(minLength: 6)
-                Label(state.preferences.refreshMode == .followClient ? (state.watchingClient ? "跟随客户端" : "打开时核验") : state.preferences.refreshMode.title,
-                      systemImage: state.preferences.refreshMode == .followClient ? "waveform.path" : "clock")
-                    .foregroundStyle(PanelPalette.secondary)
-            }
-            .font(.system(size: 9))
-            .padding(.horizontal, 20).padding(.bottom, 12)
-            .help(state.statusDetail + "\n" + state.timestampLabel + "\n" + state.watchDescription +
-                  (state.lastClientChange.map { "\n最近客户端变化 " + QuotaPresentation.time($0) } ?? ""))
-            .accessibilityElement(children: .combine)
-            .accessibilityHint(state.statusDetail + " " + state.watchDescription)
-            if state.updateStatus.isWarning {
-                statusNote(state.statusDetail, symbol: state.updateStatus.symbol, warning: true)
-            }
-            if state.lastFailure?.canRetry == false {
-                Button("打开连接设置处理") { state.settingsTab = .connection; openSettings() }
-                    .font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 14)
-            }
-            if state.verified && (state.bucket?.spendControlReached == true || state.bucket?.rateLimitReachedType != nil) {
-                statusNote("服务商报告了使用限制，请同时查看 Codex 客户端提示。", symbol: "exclamationmark.triangle", warning: true)
-            }
-                }
-                .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(GeometryReader { proxy in
-                    Color.clear.preference(key: PanelContentHeightKey.self, value: proxy.size.height)
-                })
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            panelScroll
             Divider()
-            HStack {
-                Button(action: openSettings) { Label("显示与连接设置…", systemImage: "slider.horizontal.3") }
-                    .buttonStyle(.plain).accessibilityLabel("打开 CodexUsageBar 设置")
-                Spacer()
-                Button("退出") { NSApplication.shared.terminate(nil) }.buttonStyle(.plain)
-            }.font(.system(size: 11)).foregroundStyle(PanelPalette.secondary).padding(.horizontal, 20).padding(.vertical, 13)
+            panelFooter
         }
-        .overlay(alignment: .bottom) {
-            Capsule().fill(PanelPalette.secondary.opacity(0.4)).frame(width: 30, height: 3)
-                .padding(.horizontal, 32).padding(.vertical, 4)
-                .contentShape(Rectangle())
-                .help("向下拖动以拉长弹窗")
-                .gesture(DragGesture(minimumDistance: 2)
-                    .onChanged { value in
-                        if state.panelDragStart == nil { state.panelDragStart = state.panelHeight }
-                        state.onPanelResize?((state.panelDragStart ?? state.panelHeight) + value.translation.height)
-                    }
-                    .onEnded { _ in state.panelDragStart = nil })
-        }
+        .overlay(alignment: .bottom) { resizeHandle }
         .frame(width: 390, height: state.panelHeight)
         .onPreferenceChange(PanelContentHeightKey.self) { height in
             Task { @MainActor in state.panelContentMeasured(height) }
@@ -122,6 +22,132 @@ struct QuotaPanelView: View {
         .foregroundStyle(PanelPalette.primary)
         .tint(PanelPalette.link)
         .background(PanelPalette.background)
+    }
+
+    private var panelHeader: some View {
+        HStack {
+            Image(nsImage: ProviderIcon.codex(size: 17)).renderingMode(.template).foregroundStyle(Color.accentColor)
+            Text("CodexUsageBar").font(.system(size: 13, weight: .semibold))
+            Spacer()
+            if state.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.75) }
+            Button { state.refresh() } label: { Image(systemName: "arrow.clockwise") }
+                .buttonStyle(.plain).disabled(state.isRefreshing).help("向服务商核验额度").accessibilityLabel("刷新额度")
+        }.padding(.horizontal, 20).padding(.vertical, 15)
+    }
+
+    private var panelScroll: some View {
+        ScrollView(.vertical) { panelContent }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var panelContent: some View {
+        VStack(spacing: 0) {
+            accountHeader
+            quotaSection
+            ResetCreditSectionView(state: state, openSettings: openSettings)
+            TokenActivityView(state: state)
+            statusSummary
+            statusAlerts
+        }
+        .frame(maxWidth: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: PanelContentHeightKey.self, value: proxy.size.height)
+        })
+    }
+
+    private var accountHeader: some View {
+        HStack(spacing: 12) {
+            Capsule().fill(PanelPalette.accountAccent)
+                .frame(width: 3, height: 34).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Codex 账号").font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(PanelPalette.secondary)
+                Text(state.snapshot?.accountLabel ?? "当前登录待核验")
+                    .font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }.layoutPriority(1)
+            Spacer(minLength: 8)
+            HStack(spacing: 5) {
+                Circle().fill(PanelPalette.accountAccent).frame(width: 5, height: 5)
+                    .accessibilityHidden(true)
+                Text(state.snapshot?.planType?.capitalized ?? "待确认")
+                    .font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(PanelPalette.accountAccent)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(PanelPalette.accountAccent.opacity(0.10), in: Capsule())
+            .accessibilityLabel("套餐 " + (state.snapshot?.planType?.capitalized ?? "待确认"))
+        }.frame(height: 36)
+            .padding(.horizontal, 20).padding(.vertical, 14)
+            .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var quotaSection: some View {
+        if let buckets = state.snapshot?.buckets, buckets.count > 1 {
+            Picker("额度桶", selection: Binding(get: { state.bucket?.id ?? "codex" }, set: { state.preferences.selectedBucket = $0 })) {
+                ForEach(buckets) { bucket in Text(bucket.displayName).tag(bucket.id) }
+            }.font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 12)
+        }
+        HStack(alignment: .top, spacing: 10) {
+            QuotaWindowView(window: state.bucket?.primary, fallback: "短周期额度", large: true, state: state)
+            QuotaWindowView(window: state.bucket?.secondary, fallback: "长周期额度", large: false, state: state)
+        }.padding(.horizontal, 20).padding(.bottom, 14)
+    }
+
+    private var statusSummary: some View {
+        HStack(spacing: 5) {
+            Label(state.updateStatus.title, systemImage: state.updateStatus.symbol)
+                .foregroundStyle(state.updateStatus.isWarning ? PanelPalette.warning : PanelPalette.secondary)
+            if let date = state.lastSuccessfulAt {
+                Text(QuotaPresentation.time(date)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
+            }
+            Spacer(minLength: 6)
+            Label(state.preferences.refreshMode == .followClient ? (state.watchingClient ? "跟随客户端" : "打开时核验") : state.preferences.refreshMode.title,
+                  systemImage: state.preferences.refreshMode == .followClient ? "waveform.path" : "clock")
+                .foregroundStyle(PanelPalette.secondary)
+        }
+        .font(.system(size: 9))
+        .padding(.horizontal, 20).padding(.bottom, 12)
+        .help(state.statusDetail + "\n" + state.timestampLabel + "\n" + state.watchDescription +
+              (state.lastClientChange.map { "\n最近客户端变化 " + QuotaPresentation.time($0) } ?? ""))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(state.statusDetail + " " + state.watchDescription)
+    }
+
+    @ViewBuilder private var statusAlerts: some View {
+        if state.updateStatus.isWarning {
+            statusNote(state.statusDetail, symbol: state.updateStatus.symbol, warning: true)
+        }
+        if state.lastFailure?.canRetry == false {
+            Button("打开连接设置处理") { state.settingsTab = .connection; openSettings() }
+                .font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 14)
+        }
+        if state.verified && (state.bucket?.spendControlReached == true || state.bucket?.rateLimitReachedType != nil) {
+            statusNote("服务商报告了使用限制，请同时查看 Codex 客户端提示。", symbol: "exclamationmark.triangle", warning: true)
+        }
+    }
+
+    private var panelFooter: some View {
+        HStack {
+            Button(action: openSettings) { Label("显示与连接设置…", systemImage: "slider.horizontal.3") }
+                .buttonStyle(.plain).accessibilityLabel("打开 CodexUsageBar 设置")
+            Spacer()
+            Button("退出") { NSApplication.shared.terminate(nil) }.buttonStyle(.plain)
+        }.font(.system(size: 11)).foregroundStyle(PanelPalette.secondary).padding(.horizontal, 20).padding(.vertical, 13)
+    }
+
+    private var resizeHandle: some View {
+        Capsule().fill(PanelPalette.secondary.opacity(0.4)).frame(width: 30, height: 3)
+            .padding(.horizontal, 32).padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .help("向下拖动以拉长弹窗")
+            .gesture(DragGesture(minimumDistance: 2)
+                .onChanged { value in
+                    if state.panelDragStart == nil { state.panelDragStart = state.panelHeight }
+                    state.onPanelResize?((state.panelDragStart ?? state.panelHeight) + value.translation.height)
+                }
+                .onEnded { _ in state.panelDragStart = nil })
     }
 
     private func statusNote(_ text: String, symbol: String, warning: Bool) -> some View {
