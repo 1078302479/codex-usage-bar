@@ -51,7 +51,7 @@ Tests use isolated preferences and synthetic clients by default. Optional real-s
 
 ## 本地数据 / Local data
 
-UserDefaults stores display preferences and a quota cache with a masked account label, hashed account scope, plan, timestamp, and quota metadata. Raw account identifiers used during validation are not persisted by this app. Token activity stays in memory. Codex itself manages authentication.
+UserDefaults stores display preferences and a quota cache with a masked account label, hashed account scope, plan, timestamp, quota metadata, and optional reset-credit details. Raw account identifiers used during validation are not persisted by this app. Reminder keys hash account scope, opaque card ID, and expiry; their local ledger stores scheduled/expiry dates for deduplication. Token activity stays in memory. Codex itself manages authentication.
 
 `com.guoyuming.UsageBar` remains the bundle identifier for compatibility with the earlier application name. New builds use CodexUsageBar as their display name and executable name.
 
@@ -62,6 +62,16 @@ UserDefaults stores display preferences and a quota cache with a masked account 
 - A native tracking view implements the heatmap and immediate hover/click tooltips.
 - AppKit owns appearance changes, avoiding conflicting SwiftUI color-scheme overrides.
 - `SMAppService.mainApp` reads and updates the real login-item state. Registration can fail or require approval.
+
+## 重置卡提醒 / Reset-credit reminders (v0.1.4)
+
+`account/rateLimits/read` optionally includes `rateLimitResetCredits`. `availableCount` is authoritative; missing/null details differ from an empty list. Malformed optional reward data must not break quota decoding. Only unambiguous available `codexRateLimits` rows with valid expiry dates and a verified account scope are eligible. Unknown expiry dates are never inferred. Expired rows and conflicting duplicate IDs are excluded.
+
+UserNotifications permission is requested only after an explicit opt-in. Enabling requires a new service validation. Future notifications are scheduled for expiry minus 24 hours; cards already in the reminder window receive a one-second catch-up after validation. Native request IDs and the persistent ledger provide deduplication across refreshes and restarts. Only this feature's request prefix is removed; unrelated notifications are preserved. Revision-checked serialized reconciliation cleans up late add completions after account invalidation or opt-out.
+
+Enabled users gain a 15-minute card-validation timer and a validation shortly before known reminder/expiry boundaries, subject to existing retry backoff. Sleep and invalidated quota/account data cancel pending notifications; a successful wake validation can reschedule them. Normal app quit retains already scheduled requests. Notifications reflect the most recently verified account state; remote-device consumption cannot be observed while the app is closed. System sleep, shutdown, notification settings, and Focus control actual delivery.
+
+Reminder policy, permissions, persistence, cancellation, add failures, race handling, and AppState integration are tested with an injected notification center and temporary preferences. Real-account reads and the native card/settings UI are verified separately. Actual banner/permission-dialog and reboot delivery are not claimed as tested by mock-center checks. No reset-consumption RPC is exposed or called.
 
 ## 打包与验证 / Packaging
 

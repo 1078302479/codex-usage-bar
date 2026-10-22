@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate, UNUserNotificationCenterDelegate {
     let state: AppState
     private(set) var statusItem: NSStatusItem!
     let popover = NSPopover()
@@ -15,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let lines: [String]
         let showIcon: Bool
         let appearance: AppAppearance
+        let colors: [[String?]]
     }
 
     init(state: AppState = AppState()) {
@@ -38,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         configurePresentation()
         state.start()
         let center = NSWorkspace.shared.notificationCenter
@@ -50,20 +53,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showPopover() }
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        state.reminders.refreshPermission()
+        state.panelOpened()
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        await MainActor.run { self.showPopover() }
+    }
+
     private func updatePresentation() {
         guard let button = statusItem?.button else { return }
         let lines = QuotaPresentation.stackedLines(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
+        let colors = MenuBarRenderer.stackedColors(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
         let imageKey = MenuImageKey(stacked: state.preferences.isStacked,
                                    lines: state.preferences.isStacked ? lines : [],
-                                   showIcon: state.preferences.showIcon, appearance: state.preferences.appearance)
+                                   showIcon: state.preferences.showIcon, appearance: state.preferences.appearance, colors: colors)
         if state.preferences.isStacked {
             button.title = ""
             if menuImageKey != imageKey {
-                button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: state.preferences.showIcon)
+                button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: state.preferences.showIcon, colors: colors)
             }
             button.imagePosition = .imageOnly
         } else {
             button.title = state.menuTitle
+            button.attributedTitle = MenuBarRenderer.title(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
             if state.preferences.showIcon {
                 if menuImageKey != imageKey { button.image = ProviderIcon.codex() }
                 button.imagePosition = .imageLeading

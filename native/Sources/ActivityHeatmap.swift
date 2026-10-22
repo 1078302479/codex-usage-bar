@@ -71,14 +71,16 @@ final class ActivityHeatmapView: NSView {
         return day + " · " + (values[day].map { $0.formatted(.number.precision(.fractionLength(0))) + " Token" } ?? "未返回数据")
     }
     private func text(_ value: String, at point: NSPoint, size: CGFloat = 9, color: NSColor = .secondaryLabelColor, weight: NSFont.Weight = .regular) {
-        (value as NSString).draw(at: point, withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color])
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let resolved = dark && color == .secondaryLabelColor ? NSColor(srgbRed: 0.69, green: 0.72, blue: 0.77, alpha: 1) : color
+        (value as NSString).draw(at: point, withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: resolved])
     }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard days.count == 182 else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let palette: [NSColor] = dark
-            ? [NSColor(white: 0.22, alpha: 1), NSColor(red: 0.20, green: 0.30, blue: 0.49, alpha: 1), NSColor(red: 0.26, green: 0.43, blue: 0.70, alpha: 1), NSColor(red: 0.34, green: 0.57, blue: 0.89, alpha: 1), NSColor(red: 0.58, green: 0.73, blue: 1, alpha: 1)]
+            ? [NSColor(white: 0.25, alpha: 1), NSColor(red: 0.29, green: 0.34, blue: 0.43, alpha: 1), NSColor(red: 0.36, green: 0.44, blue: 0.56, alpha: 1), NSColor(red: 0.44, green: 0.55, blue: 0.69, alpha: 1), NSColor(red: 0.58, green: 0.68, blue: 0.81, alpha: 1)]
             : [NSColor(white: 0.91, alpha: 1), NSColor(red: 0.79, green: 0.86, blue: 0.97, alpha: 1), NSColor(red: 0.53, green: 0.69, blue: 0.93, alpha: 1), NSColor(red: 0.30, green: 0.52, blue: 0.85, alpha: 1), NSColor(red: 0.14, green: 0.36, blue: 0.70, alpha: 1)]
         let peak = values.values.max() ?? 0
         var previousMonth = ""
@@ -100,8 +102,8 @@ final class ActivityHeatmapView: NSView {
                 let level = value <= 0 || peak <= 0 ? 0 : max(1, min(4, Int(ceil(sqrt(value / peak) * 4))))
                 palette[level].setFill(); path.fill()
             } else {
-                (dark ? NSColor(white: 0.15, alpha: 1) : NSColor(white: 0.97, alpha: 1)).setFill(); path.fill()
-                NSColor.separatorColor.withAlphaComponent(0.30).setStroke(); path.lineWidth = 0.5; path.stroke()
+                (dark ? NSColor(white: 0.205, alpha: 1) : NSColor(white: 0.97, alpha: 1)).setFill(); path.fill()
+                if !dark { NSColor.separatorColor.withAlphaComponent(0.30).setStroke(); path.lineWidth = 0.5; path.stroke() }
             }
             if hovered == index {
                 NSColor.controlAccentColor.setStroke(); path.lineWidth = 1.5; path.stroke()
@@ -122,10 +124,10 @@ final class ActivityHeatmapView: NSView {
             let tooltip = NSRect(x: x, y: y, width: width, height: height)
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.22); shadow.shadowBlurRadius = 5; shadow.shadowOffset = NSSize(width: 0, height: 1); shadow.set()
-            NSColor(white: dark ? 0.92 : 0.13, alpha: 1).setFill()
+            NSColor(white: dark ? 0.24 : 0.13, alpha: 1).setFill()
             NSBezierPath(roundedRect: tooltip, xRadius: 6, yRadius: 6).fill()
             NSGraphicsContext.restoreGraphicsState()
-            let foreground = NSColor(white: dark ? 0.1 : 1, alpha: 1)
+            let foreground = NSColor(white: dark ? 0.91 : 1, alpha: 1)
             text(days[hovered], at: NSPoint(x: x + 9, y: y + 5), size: 9, color: foreground.withAlphaComponent(0.75))
             let value = values[days[hovered]].map { $0.formatted(.number.precision(.fractionLength(0))) + " Token" } ?? "未返回数据"
             text(value, at: NSPoint(x: x + 9, y: y + 20), size: 11, color: foreground, weight: .medium)

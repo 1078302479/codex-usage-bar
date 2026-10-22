@@ -19,32 +19,67 @@ struct QuotaPanelView: View {
             Divider()
             ScrollView(.vertical) {
                 VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "terminal").font(.system(size: 19)).frame(width: 34, height: 34)
-                    .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Codex").font(.system(size: 13, weight: .semibold))
-                    Text(state.snapshot?.accountLabel ?? "本机 Codex 当前登录").font(.system(size: 10)).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Capsule().fill(PanelPalette.accountAccent)
+                    .frame(width: 3, height: 34).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Codex 账号").font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(PanelPalette.secondary)
+                    Text(state.snapshot?.accountLabel ?? "当前登录待核验")
+                        .font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }.layoutPriority(1)
+                Spacer(minLength: 8)
+                HStack(spacing: 5) {
+                    Circle().fill(PanelPalette.accountAccent).frame(width: 5, height: 5)
+                        .accessibilityHidden(true)
+                    Text(state.snapshot?.planType?.capitalized ?? "待确认")
+                        .font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
                 }
-                Spacer()
-                if let plan = state.snapshot?.planType {
-                    Text(plan.capitalized).font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 7).padding(.vertical, 4)
-                        .background(.primary.opacity(0.04), in: Capsule())
-                }
-            }.padding(20)
+                .foregroundStyle(PanelPalette.accountAccent)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(PanelPalette.accountAccent.opacity(0.10), in: Capsule())
+                .accessibilityLabel("套餐 " + (state.snapshot?.planType?.capitalized ?? "待确认"))
+            }.frame(height: 36)
+                .padding(.horizontal, 20).padding(.vertical, 14)
+                .accessibilityElement(children: .combine)
+
+
 
             if let buckets = state.snapshot?.buckets, buckets.count > 1 {
                 Picker("额度桶", selection: Binding(get: { state.bucket?.id ?? "codex" }, set: { state.preferences.selectedBucket = $0 })) {
                     ForEach(buckets) { bucket in Text(bucket.displayName).tag(bucket.id) }
                 }.font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 12)
             }
-            QuotaWindowView(window: state.bucket?.primary, fallback: "短周期额度", large: true, state: state)
-            QuotaWindowView(window: state.bucket?.secondary, fallback: "长周期额度", large: false, state: state)
+            HStack(alignment: .top, spacing: 10) {
+                QuotaWindowView(window: state.bucket?.primary, fallback: "短周期额度", large: true, state: state)
+                QuotaWindowView(window: state.bucket?.secondary, fallback: "长周期额度", large: false, state: state)
+            }.padding(.horizontal, 20).padding(.bottom, 14)
+
+            ResetCreditSectionView(state: state, openSettings: openSettings)
 
             TokenActivityView(state: state)
 
-            statusNote(state.updateStatus.title + " · " + state.statusDetail,
-                       symbol: state.updateStatus.symbol, warning: state.updateStatus.isWarning)
+            HStack(spacing: 5) {
+                Label(state.updateStatus.title, systemImage: state.updateStatus.symbol)
+                    .foregroundStyle(state.updateStatus.isWarning ? PanelPalette.warning : PanelPalette.secondary)
+                if let date = state.lastSuccessfulAt {
+                    Text(QuotaPresentation.time(date)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
+                }
+                Spacer(minLength: 6)
+                Label(state.preferences.refreshMode == .followClient ? (state.watchingClient ? "跟随客户端" : "打开时核验") : state.preferences.refreshMode.title,
+                      systemImage: state.preferences.refreshMode == .followClient ? "waveform.path" : "clock")
+                    .foregroundStyle(PanelPalette.secondary)
+            }
+            .font(.system(size: 9))
+            .padding(.horizontal, 20).padding(.bottom, 12)
+            .help(state.statusDetail + "\n" + state.timestampLabel + "\n" + state.watchDescription +
+                  (state.lastClientChange.map { "\n最近客户端变化 " + QuotaPresentation.time($0) } ?? ""))
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(state.statusDetail + " " + state.watchDescription)
+            if state.updateStatus.isWarning {
+                statusNote(state.statusDetail, symbol: state.updateStatus.symbol, warning: true)
+            }
             if state.lastFailure?.canRetry == false {
                 Button("打开连接设置处理") { state.settingsTab = .connection; openSettings() }
                     .font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 14)
@@ -52,14 +87,6 @@ struct QuotaPanelView: View {
             if state.verified && (state.bucket?.spendControlReached == true || state.bucket?.rateLimitReachedType != nil) {
                 statusNote("服务商报告了使用限制，请同时查看 Codex 客户端提示。", symbol: "exclamationmark.triangle", warning: true)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                Label(state.timestampLabel, systemImage: "checkmark.shield")
-                Label(state.watchDescription, systemImage: state.preferences.refreshMode == .followClient ? "waveform.path" : "clock")
-                if let date = state.lastClientChange {
-                    Text("最近客户端变化 " + QuotaPresentation.time(date)).padding(.leading, 19)
-                }
-            }.font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 18)
                 }
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
@@ -74,10 +101,10 @@ struct QuotaPanelView: View {
                     .buttonStyle(.plain).accessibilityLabel("打开 CodexUsageBar 设置")
                 Spacer()
                 Button("退出") { NSApplication.shared.terminate(nil) }.buttonStyle(.plain)
-            }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 20).padding(.vertical, 13)
+            }.font(.system(size: 11)).foregroundStyle(PanelPalette.secondary).padding(.horizontal, 20).padding(.vertical, 13)
         }
         .overlay(alignment: .bottom) {
-            Capsule().fill(Color.secondary.opacity(0.4)).frame(width: 30, height: 3)
+            Capsule().fill(PanelPalette.secondary.opacity(0.4)).frame(width: 30, height: 3)
                 .padding(.horizontal, 32).padding(.vertical, 4)
                 .contentShape(Rectangle())
                 .help("向下拖动以拉长弹窗")
@@ -92,14 +119,16 @@ struct QuotaPanelView: View {
         .onPreferenceChange(PanelContentHeightKey.self) { height in
             Task { @MainActor in state.panelContentMeasured(height) }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .foregroundStyle(PanelPalette.primary)
+        .tint(PanelPalette.link)
+        .background(PanelPalette.background)
     }
 
     private func statusNote(_ text: String, symbol: String, warning: Bool) -> some View {
         Label(text, systemImage: symbol).font(.system(size: 10)).lineSpacing(3)
-            .foregroundStyle(warning ? Color.orange : Color.secondary)
+            .foregroundStyle(warning ? PanelPalette.warning : PanelPalette.secondary)
             .frame(maxWidth: .infinity, alignment: .leading).padding(11)
-            .background((warning ? Color.orange : Color.accentColor).opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+            .background((warning ? PanelPalette.warning : Color.accentColor).opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
             .padding(.horizontal, 20).padding(.bottom, 14)
     }
 }
@@ -114,36 +143,32 @@ private struct QuotaWindowView: View {
     private var amount: String { QuotaPresentation.value(window, verified: state.verified, now: state.now) }
     private var remaining: Double? { amount == "--" ? nil : window?.remaining }
     private var color: Color {
-        guard let remaining else { return .secondary }
+        guard let remaining else { return PanelPalette.secondary }
         if remaining <= 5 { return Color(red: 0.93, green: 0.48, blue: 0.44) }
-        if remaining <= 20 { return .orange }
-        return large ? Color(red: 0.54, green: 0.65, blue: 0.97) : Color(red: 0.56, green: 0.64, blue: 0.78)
+        if remaining <= 20 { return PanelPalette.warning }
+        return large ? PanelPalette.shortRing : PanelPalette.longRing
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(window?.label ?? fallback).font(.system(size: 12, weight: .medium))
-                Spacer()
-                Text(QuotaPresentation.resetLabel(window, now: state.now)).font(.system(size: 10)).foregroundStyle(.secondary)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(amount.replacingOccurrences(of: "%", with: "")).font(.system(size: large ? 49 : 34, weight: .regular)).monospacedDigit().foregroundStyle(color)
-                if amount != "--" { Text("%").font(.system(size: large ? 24 : 19)).foregroundStyle(.secondary) }
-                Text(state.isStale && state.verified ? "上次剩余" : "剩余").font(.system(size: 10)).foregroundStyle(.secondary).padding(.leading, 5)
-                Spacer()
-            }
-            HStack(spacing: 3) {
-                ForEach(0..<36, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1.5).fill(remaining.map { Double(i) < $0 * 36 / 100 } == true ? color : Color.primary.opacity(0.06))
-                        .frame(height: large ? 7 : 5)
+        VStack(spacing: 12) {
+            Text(window?.label ?? fallback).font(.system(size: 12, weight: .semibold))
+            ZStack {
+                Circle().stroke(PanelPalette.ringTrack, lineWidth: 8)
+                Circle().trim(from: 0, to: min(100, max(0, remaining ?? 0)) / 100)
+                    .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 3) {
+                    Text(amount).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    Text(state.isStale && state.verified ? "上次剩余" : "剩余")
+                        .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
                 }
-            }.accessibilityHidden(true)
-            HStack {
-                Text(remaining.map { "已用 " + QuotaPresentation.percent(100 - $0) } ?? (window?.isResetPending(at: state.now) == true ? "等待服务商确认重置" : "暂无有效数据"))
-                Spacer()
-                Text(window?.isResetPending(at: state.now) == true ? "不自动重置为 100%" : "独立额度窗口")
-            }.font(.system(size: 9)).foregroundStyle(.secondary)
-        }.padding(.horizontal, 20).padding(.bottom, large ? 24 : 20)
+            }.frame(width: 118, height: 118).padding(.vertical, 4)
+            Text(QuotaPresentation.resetLabel(window, now: state.now))
+                .font(.system(size: 9)).foregroundStyle(PanelPalette.secondary).lineLimit(2)
+                .frame(height: 24, alignment: .top)
+        }.frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .help(window?.isResetPending(at: state.now) == true ? "等待服务商确认重置，不自动重置为 100%" : "独立额度窗口" + (remaining.map { "，已用 " + QuotaPresentation.percent(100 - $0) } ?? "，暂无有效数据"))
         .accessibilityElement(children: .combine)
     }
 }
@@ -187,16 +212,21 @@ struct UsageSettingsView: View {
                     Text(state.preferences.useSeparator ? "用所选分隔符分开各项。" : "各项仅使用空格排开。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                MenuColorRulesView(title: "5 小时百分比颜色", rules: Binding(
+                    get: { state.preferences.primaryColorRules ?? [] }, set: { state.preferences.primaryColorRules = $0 }))
+                MenuColorRulesView(title: "7 天百分比颜色", rules: Binding(
+                    get: { state.preferences.secondaryColorRules ?? [] }, set: { state.preferences.secondaryColorRules = $0 }))
                 Section("实时预览") {
                     HStack(spacing: 6) {
                         if state.preferences.isStacked {
                             Image(nsImage: MenuBarRenderer.stackedImage(
                                 lines: QuotaPresentation.stackedLines(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now),
-                                showIcon: state.preferences.showIcon))
+                                showIcon: state.preferences.showIcon,
+                                colors: MenuBarRenderer.stackedColors(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)))
                                 .fixedSize()
                         } else {
                             if state.preferences.showIcon { Image(nsImage: ProviderIcon.codex()).resizable().frame(width: 17, height: 17) }
-                            Text(state.menuTitle.isEmpty ? "仅显示图标" : state.menuTitle).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                            Text(AttributedString(MenuBarRenderer.title(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)))
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
                     Text("修改立即应用到真正的 macOS 菜单栏。* 表示旧快照，-- 表示未知或重置待确认。")
@@ -238,6 +268,9 @@ struct UsageSettingsView: View {
                 }
             }.formStyle(.grouped).tabItem { Label("连接与更新", systemImage: "arrow.triangle.2.circlepath") }.tag(SettingsTab.connection)
 
+            ResetCreditReminderSettingsView(controller: state.reminders)
+                .tabItem { Label("重置卡提醒", systemImage: "bell.badge") }.tag(SettingsTab.reminders)
+
             Form {
                 LoginItemSettingsView(controller: state.loginItem)
                 Section("外观") {
@@ -246,9 +279,9 @@ struct UsageSettingsView: View {
                     }
                 }
                 Section("关于 CodexUsageBar") {
-                    LabeledContent("版本", value: "0.1.3")
+                    LabeledContent("版本", value: "0.1.4")
                     Text("只读套餐额度，常驻 macOS 菜单栏。时间按北京时间显示。")
-                    Text("Token 活动来自官方账号统计；支持登录时自动启动，当前不包含系统通知。")
+                    Text("Token 活动来自官方账号统计；支持登录时自动启动与重置卡到期通知。")
                         .foregroundStyle(.secondary)
                 }
             }.formStyle(.grouped).tabItem { Label("外观与关于", systemImage: "circle.lefthalf.filled") }.tag(SettingsTab.appearance)

@@ -15,12 +15,16 @@ This is an independent community project, not an official OpenAI application or 
 ## Features
 
 - Remaining allowance and reset times for independent short-term and weekly windows; actual durations come from the service.
+- Independent remaining-percentage color ranges for short- and long-term menu-bar quotas, including stacked mode. Default text colors remain unchanged.
+- Circular quota gauges, a compact account/subscription header and refreshed light/dark activity views.
 - Configurable menu bar metrics, provider icon, labels, plan name, and separators.
 - Stacked mode: weekly allowance above the 5-hour allowance, or a regular single-line layout.
 - Compact resets: `HH:mm` for the short window and `MM-dd` for the long window, with independently optional descriptions.
 - Official lifetime tokens, peak daily tokens, longest-running turn, and current/longest activity streaks.
 - A 26-week heatmap with immediate hover/click details and exact daily token counts.
 - Event-following refresh by default, with optional 1-, 5-, and 15-minute polling.
+- Official reset-credit count, nearest expiry, count expiring within 72 hours, and per-card expiry details without guessing missing dates.
+- Opt-in local expiry reminders 24 hours ahead, with fresh-validation catch-up, persistent account/card deduplication, and cancellation when usage, expiry, or account changes are detected.
 - Automatic recovery from network request failures, timeouts, and child-process disconnections with 5/15/30/60/120/300-second backoff, capped at five minutes. A network-return hint expedites one coalesced query. Authentication, configuration, and compatibility errors require user action instead of repeated automatic retries.
 - Explicit validation, stale-data, network-failure, login, and compatibility states, with the last successful validation and next retry time. Unverified cached data is labeled separately.
 - Light, dark, and system appearance; an expanding/resizable popover; macOS login-item support.
@@ -80,7 +84,7 @@ No Intel binary is provided and Intel hardware has not been validated. API-key-o
 
 ## Install
 
-1. Download `CodexUsageBar-0.1.3-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
+1. Download `CodexUsageBar-0.1.4-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
 2. Open the DMG and drag **CodexUsageBar** into **Applications**.
 3. Eject the installation disk and launch the app from Applications.
 4. Optionally enable **Settings → Appearance & About → Launch at login**. The current UI is in Chinese.
@@ -167,7 +171,9 @@ docs/              Architecture, release notes and maintenance documentation
 
 ## Limits and feedback
 
-System notifications, per-session token details, and additional providers are not included. Expired authentication, real account switching, extended uptime, different Codex versions, and actual login-after-reboot behavior need broader validation. Real local account reads and the main native UI flows have been verified.
+Only reset-credit expiry notifications are included; low-quota notifications, per-session details, and additional providers are not included. Expiry reminders are off by default. Opted-in users gain 15-minute card checks and a check before known reminder times. Card usage on another device is detected at the next validation. Normal quit preserves scheduled local notifications; shutdown, sleep, or Focus may delay delivery. Real system-banner delivery and reboot behavior still need validation after notification consent.
+
+Expired authentication, real account switching, extended uptime, different Codex versions, and actual login-after-reboot behavior need broader validation. Real local account reads, reset-credit details, and the main native UI flows have been verified.
 
 Report issues through [GitHub Issues](https://github.com/1078302479/codex-usage-bar/issues). Include macOS, architecture, Codex, and app versions. Remove account identifiers, email addresses, tokens, and personal usage information. See [CONTRIBUTING.md](CONTRIBUTING.md).
 

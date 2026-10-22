@@ -49,6 +49,8 @@ struct AccountInfo: Codable, Sendable, Equatable {
     let email: String?
     let planType: String?
 
+    var name: String? = nil
+
     var scopeKey: String? {
         guard let identifier = chatgptAccountId ?? id ?? email else { return nil }
         let value = [type ?? "unknown", identifier, workspaceId ?? "workspace-unavailable"].joined(separator: "|")
@@ -64,6 +66,15 @@ struct AccountResponse: Decodable, Sendable { let account: AccountInfo? }
 struct RateLimitsResponse: Decodable, Sendable {
     let rateLimits: QuotaBucket?
     let rateLimitsByLimitId: [String: QuotaBucket]?
+    let rateLimitResetCredits: ResetCreditSummary?
+    private enum CodingKeys: String, CodingKey { case rateLimits, rateLimitsByLimitId, rateLimitResetCredits }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rateLimits = try c.decodeIfPresent(QuotaBucket.self, forKey: .rateLimits)
+        rateLimitsByLimitId = try c.decodeIfPresent([String: QuotaBucket].self, forKey: .rateLimitsByLimitId)
+        // An optional reward schema must never break ordinary quota validation.
+        rateLimitResetCredits = try? c.decodeIfPresent(ResetCreditSummary.self, forKey: .rateLimitResetCredits)
+    }
     func buckets() -> [QuotaBucket] {
         if let map = rateLimitsByLimitId, !map.isEmpty {
             return map.keys.sorted { a, b in a == "codex" ? b != "codex" : b == "codex" ? false : a < b }.compactMap { key in
@@ -83,6 +94,8 @@ struct QuotaSnapshot: Codable, Sendable, Equatable {
     let accountLabel: String
     let planType: String?
     let buckets: [QuotaBucket]
+    var accountName: String? = nil
+    var resetCredits: ResetCreditSummary? = nil
 }
 
 enum RefreshMode: String, Codable, CaseIterable, Sendable {
@@ -110,7 +123,21 @@ enum AppAppearance: String, Codable, CaseIterable, Sendable {
     var title: String { self == .dark ? "深色" : self == .light ? "浅色" : "跟随系统" }
 }
 
+struct PercentageColorRule: Codable, Sendable, Equatable, Identifiable {
+    var id = UUID()
+    var lower = 0
+    var upper = 20
+    var hex = "FF9F0A"
+    func matches(_ value: Double) -> Bool {
+        (0...100).contains(lower) && (lower...100).contains(upper) && value.isFinite &&
+        value >= Double(lower) && value <= Double(upper) &&
+        hex.count == 6 && hex.allSatisfy { $0.isHexDigit }
+    }
+}
+
 struct Preferences: Codable, Sendable, Equatable {
+    var primaryColorRules: [PercentageColorRule]? = nil
+    var secondaryColorRules: [PercentageColorRule]? = nil
     // Optional for backwards-compatible decoding of existing preferences.v1.
     var stackedDisplay: Bool? = nil
     var isStacked: Bool {
@@ -132,7 +159,7 @@ struct Preferences: Codable, Sendable, Equatable {
     var useSeparator = true
     var separator = "|"
     var refreshMode: RefreshMode = .followClient
-    var appearance: AppAppearance = .dark
+    var appearance: AppAppearance = .light
     var selectedBucket = "codex"
     var cliPath = ""
 }

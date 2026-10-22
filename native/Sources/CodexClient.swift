@@ -92,7 +92,9 @@ actor CodexClient: QuotaClient {
         deferredUpdates.removeAll()
         if changed { handler?(.quotaChanged) }
         return QuotaSnapshot(observedAt: Date(), accountScope: after?.scopeKey, accountLabel: after?.maskedLabel ?? "Codex 当前登录",
-                             planType: after?.planType ?? buckets.first?.planType, buckets: buckets)
+                             planType: after?.planType ?? buckets.first?.planType, buckets: buckets,
+                             accountName: after?.name,
+                             resetCredits: response.rateLimitResetCredits)
     }
 
     func fetchUsage(expectedScope: String) async throws -> TokenActivity {
@@ -136,7 +138,7 @@ actor CodexClient: QuotaClient {
         path = executable
         do { try task.run() } catch { shutdown(); throw CodexFailure.processStopped }
         do {
-            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.3"]])
+            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.4"]])
             try checkSession(current)
             try send(["method": "initialized", "params": [:]])
             ready = true

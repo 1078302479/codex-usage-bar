@@ -1,13 +1,15 @@
 import Foundation
 import Combine
 
-enum SettingsTab: Hashable { case menuBar, connection, appearance }
+enum SettingsTab: Hashable { case menuBar, connection, reminders, appearance }
 
 @MainActor
 final class AppState: ObservableObject {
     let loginItem = LoginItemController()
+    let reminders: ResetCreditReminderController
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
+    @Published var resetCreditsExpanded = false
     var panelContentHeight: CGFloat = 0
     var panelPreferredHeight: CGFloat?
     var panelDragStart: CGFloat?
@@ -58,6 +60,7 @@ final class AppState: ObservableObject {
     private var pollTimer: Timer?
     private var clockTimer: Timer?
     private var resetTimer: Timer?
+    private var creditCheckTimer: Timer?
     private var scheduledRefresh: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
@@ -72,12 +75,15 @@ final class AppState: ObservableObject {
     private var resetAttempts = 0
     private var started = false
 
-    init(defaults: UserDefaults = .standard, client: any QuotaClient = CodexClient(), recovery: RecoveryPolicy = RecoveryPolicy()) {
+    init(defaults: UserDefaults = .standard, client: any QuotaClient = CodexClient(), recovery: RecoveryPolicy = RecoveryPolicy(), reminderCenter: any ReminderNotificationCenter = SystemReminderCenter()) {
         precondition(!recovery.retryDelays.isEmpty && recovery.retryDelays.allSatisfy { $0 > 0 && $0.isFinite })
         self.defaults = defaults; self.client = client; self.recovery = recovery
+        reminders = ResetCreditReminderController(defaults: defaults, center: reminderCenter)
         if let data = defaults.data(forKey: "preferences.v1"), let saved = try? JSONDecoder().decode(Preferences.self, from: data) { preferences = saved }
         else { preferences = Preferences() }
         if let data = defaults.data(forKey: "quota-cache.v1") { snapshot = try? JSONDecoder().decode(QuotaSnapshot.self, from: data) }
+        reminders.onConfigurationChange = { [weak self] in self?.configureCreditCheck() }
+        reminders.onNeedsRefresh = { [weak self] in self?.scheduleRefresh(reason: "重置卡提醒核验", delay: 0) }
     }
 
     var bucket: QuotaBucket? { QuotaPresentation.selectedBucket(snapshot, preferences: preferences) }
@@ -122,6 +128,7 @@ final class AppState: ObservableObject {
     func start() {
         guard !started else { return }
         started = true; paused = false
+        reminders.start()
         let home = ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
         let monitor = ClientLogMonitor(root: home.appendingPathComponent("sessions")) { [weak self] date in
             Task { @MainActor in
@@ -219,6 +226,8 @@ final class AppState: ObservableObject {
                 guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil }
                 snapshot = result; verified = true; lastFailure = nil; lastSuccessfulAt = result.observedAt; now = Date()
+                reminders.update(snapshot: result, verified: true)
+                configureCreditCheck()
                 cancelRetry()
                 if result.accountScope != nil, let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: "quota-cache.v1") }
                 configureResetCheck()
@@ -272,7 +281,7 @@ final class AppState: ObservableObject {
 
     private func recordFailure(_ failure: CodexFailure, invalidateQuota: Bool = true) {
         lastFailure = failure; now = Date()
-        if invalidateQuota { verified = false }
+        if invalidateQuota { verified = false; reminders.update(snapshot: nil, verified: false) }
         resetTimer?.invalidate(); resetTimer = nil
         scheduledRefresh?.cancel(); scheduledRefresh = nil
         queuedReason = nil
@@ -301,6 +310,8 @@ final class AppState: ObservableObject {
     private func clearAccount() {
         verified = false; snapshot = nil; tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; lastSuccessfulAt = nil
         defaults.removeObject(forKey: "quota-cache.v1")
+        reminders.update(snapshot: nil, verified: false)
+        creditCheckTimer?.invalidate(); creditCheckTimer = nil
     }
 
     private func invalidateConnection() {
@@ -348,9 +359,30 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func configureCreditCheck() {
+        creditCheckTimer?.invalidate(); creditCheckTimer = nil
+        guard reminders.enabled, !paused else { return }
+        // Only opt-in reminder users gain periodic checks for cards used elsewhere.
+        // Also validate shortly before an upcoming scheduled reminder/expiry.
+        let now = Date()
+        let boundaries = snapshot?.resetCredits?.availableDetails.compactMap(\.expiryDate).flatMap {
+            [$0.addingTimeInterval(-86430), $0]
+        }.filter { $0 > now } ?? []
+        let interval = max(1, min(900, boundaries.min()?.timeIntervalSince(now) ?? 900))
+        creditCheckTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refresh(reason: "重置卡状态核验")
+                self.configureCreditCheck()
+            }
+        }
+    }
+
     func pause() {
         guard !paused else { return }
         paused = true; verified = false; invalidateConnection()
+        reminders.update(snapshot: nil, verified: false)
+        creditCheckTimer?.invalidate(); creditCheckTimer = nil
         clockTimer?.invalidate(); clockTimer = nil; pollTimer?.invalidate(); pollTimer = nil
         now = Date(); onDisplayChange?()
     }
@@ -365,7 +397,10 @@ final class AppState: ObservableObject {
         watcher?.stop(); watcher = nil; watchingClient = false
         connectivity?.stop(); connectivity = nil
         clockTimer?.invalidate(); clockTimer = nil; pollTimer?.invalidate(); pollTimer = nil
+        creditCheckTimer?.invalidate(); creditCheckTimer = nil
         await connectionBarrier?.value
+        // Already scheduled local notifications may remain when quitting normally.
+        await reminders.flush()
         connectionBarrier = nil; started = false
     }
 }
