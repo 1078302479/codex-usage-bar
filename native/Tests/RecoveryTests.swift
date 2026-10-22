@@ -9,6 +9,7 @@ private actor TestQuotaClient: QuotaClient {
     private(set) var calls = 0
     private(set) var active = 0
     private(set) var maximumActive = 0
+    private(set) var usageCalls = 0
     private var usageFailure: CodexFailure?
     init(_ replies: [Reply], usageFailure: CodexFailure? = nil) { self.replies = replies; self.usageFailure = usageFailure }
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) { handler = value }
@@ -23,6 +24,7 @@ private actor TestQuotaClient: QuotaClient {
         }
     }
     func fetchUsage(expectedScope: String) throws -> TokenActivity {
+        usageCalls += 1
         if let usageFailure { throw usageFailure }
         return TokenActivity(summary: nil, dailyUsageBuckets: nil)
     }
@@ -44,6 +46,7 @@ private actor TestQuotaClient: QuotaClient {
         try await sleepCancelsRetry()
         try await sourceChange()
         try await presentationAndActivity()
+        try await missedResetCreditEvent()
         if CommandLine.arguments.contains("--transport") { try await realTransport() }
         print("PASS: recovery coordinator and update-state regressions")
     }
@@ -66,6 +69,42 @@ private actor TestQuotaClient: QuotaClient {
             try await Task.sleep(for: .milliseconds(5))
         }
         fatalError("Timed out: " + label)
+    }
+
+    @MainActor static func missedResetCreditEvent() async throws {
+        var before = snapshot(age: 3)
+        before.resetCredits = ResetCreditSummary(availableCount: 3, credits: nil)
+        let full = QuotaWindow(usedPercent: 0, windowDurationMins: 300, resetsAt: Date().addingTimeInterval(18000).timeIntervalSince1970)
+        let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: full, secondary: nil, planType: "plus", spendControlReached: nil, rateLimitReachedType: nil)
+        let after = QuotaSnapshot(observedAt: Date(), accountScope: "fixture", accountLabel: "Fixture", planType: "plus", buckets: [bucket], resetCredits: ResetCreditSummary(availableCount: 2, credits: nil))
+        let client = TestQuotaClient([.value(before), .value(after)])
+        let (state, defaults, suite) = makeState(client, delays: [2])
+        defer { defaults.removePersistentDomain(forName: suite) }
+        state.refresh(reason: "启动核验")
+        try await eventually("initial pre-card quota") { state.verified && !state.isRefreshing }
+        require(state.quotaPollInterval == 60, "Hidden follow mode checks every 60s even with reminders disabled")
+        state.setPanelVisible(true)
+        require(state.quotaPollInterval == 15, "Visible panel checks every 15s")
+        state.setPanelVisible(false)
+        // Simulate the production timer, deliberately without sending any client event.
+        state.pollQuota()
+        try await eventually("card consumed without a notification") { !state.isRefreshing && state.snapshot?.resetCredits?.availableCount == 2 }
+        require(state.bucket?.primary?.remaining == 100, "Only service-confirmed quota reflects card reset")
+        require(await client.usageCalls == 1, "Fallback quota checks must not fetch Token activity")
+        state.preferences.refreshMode = .everyFiveMinutes
+        state.setPanelVisible(true)
+        require(state.quotaPollInterval == 300, "Explicit user polling preference is preserved")
+        state.preferences.refreshMode = .followClient
+        await client.append(.fail(.networkUnavailable))
+        state.pollQuota()
+        try await eventually("fallback failure") { state.lastFailure == .networkUnavailable && !state.isRefreshing }
+        let calls = await client.calls
+        for _ in 0..<10 { state.pollQuota() }
+        require(await client.calls == calls, "Fallback cannot bypass backoff")
+        state.pause(); state.pollQuota()
+        require(await client.calls == calls, "Sleep pauses fallback reads")
+        await state.stop()
+        print("PASS: missed reset-credit events, 15s/60s fallback, quota-only requests, user intervals, backoff and sleep")
     }
 
     static func policyAndClassification() {

@@ -103,7 +103,7 @@ struct QuotaPanelView: View {
                 Text(QuotaPresentation.time(date)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
             }
             Spacer(minLength: 6)
-            Label(state.preferences.refreshMode == .followClient ? (state.watchingClient ? "跟随客户端" : "打开时核验") : state.preferences.refreshMode.title,
+            Label(state.preferences.refreshMode == .followClient ? (state.watchingClient ? "事件＋定时补查" : "定时补查") : state.preferences.refreshMode.title,
                   systemImage: state.preferences.refreshMode == .followClient ? "waveform.path" : "clock")
                 .foregroundStyle(PanelPalette.secondary)
         }
@@ -265,7 +265,7 @@ struct UsageSettingsView: View {
                     Picker("更新方式", selection: bind(\.refreshMode)) {
                         ForEach(RefreshMode.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
-                    Text("默认跟随本机客户端额度变化：监听客户端写入和额度通知，再向服务商核验。不会把固定的 5 分钟轮询称为客户端频率。")
+                    Text("默认跟随本机客户端额度变化，并在面板显示时每 15 秒、后台每 60 秒补充核验额度，避免漏掉重置卡或其他设备的变化。补查不拉取 Token 统计，休眠时暂停，失败后按退避策略重试。")
                         .font(.caption).foregroundStyle(.secondary)
                     LabeledContent("当前状态", value: state.updateStatus.title)
                     Text(state.statusDetail).font(.caption)

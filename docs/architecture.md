@@ -25,15 +25,15 @@ The app owns one App Server child process. An actor coordinates requests, timeou
 
 ## 更新 / Refresh
 
-默认跟随事件，无固定分钟数轮询。FSEvents 发现新会话文件，文件描述符监听处理追加写入；近期 token_count 额度指纹发生变化后合并触发服务端核验。日志值不直接覆盖已验证的账号额度。
+默认优先跟随事件，并在面板可见时每 15 秒、隐藏时每 60 秒补充核验额度，捕捉其他设备或重置卡变化漏报。FSEvents 发现新会话文件，文件描述符监听处理追加写入；近期 token_count 额度指纹发生变化后合并触发服务端核验。日志值不直接覆盖已验证的账号额度。
 
-Startup, panel opening, wake, reset boundaries, and explicit refresh also validate quota. User-selectable fixed intervals are separate from event following. Token activity is reused for up to five minutes on the same account except on manual refresh.
+Startup, panel opening, wake, reset boundaries, and explicit refresh also validate quota. User-selectable fixed intervals override the default 15-second visible / 60-second hidden fallback. Fallback reads skip Token activity entirely. Token activity is reused for up to five minutes on the same account except on manual refresh.
 
 This is a local observation strategy, not a guarantee of matching an undocumented client refresh interval. Other-device updates may remain invisible until the next service query.
 
 ## 恢复与状态 / Recovery and status (v0.1.3)
 
-AppState owns one refresh chain, one coalesced event task, and at most one retry task. Recoverable failures use 5/15/30/60/120/300-second backoff. Automatic events, polling, and panel opening do not bypass a pending retry or a user-action error; explicit refresh can retry immediately. Healthy event-following mode does not gain periodic polling. NWPathMonitor is only a hint to expedite a retry after an offline-to-online transition; it does not prove service availability.
+AppState owns one refresh chain, one coalesced event task, and at most one retry task. Recoverable failures use 5/15/30/60/120/300-second backoff. Automatic events, polling, and panel opening do not bypass a pending retry or a user-action error; explicit refresh can retry immediately. Event-following mode has a quota-only fallback; sleep pauses it and retry backoff still takes precedence. NWPathMonitor is only a hint to expedite a retry after an offline-to-online transition; it does not prove service availability.
 
 Sleep, stop, and CLI configuration changes advance a connection epoch and invalidate old request ownership. New requests wait for prior shutdown tasks. Account notifications advance a separate identity epoch: in-flight data is discarded and revalidated on the same connection. Initialization also emits account notifications, so they must not trigger a connection restart. The client also checks its process generation after asynchronous RPC boundaries, so old continuations cannot mutate or shut down a replacement connection. Sleep cancels retries and timers; duplicate wake callbacks coalesce into one delayed validation.
 

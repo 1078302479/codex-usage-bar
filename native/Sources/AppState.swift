@@ -74,6 +74,8 @@ final class AppState: ObservableObject {
     private var resetKey = ""
     private var resetAttempts = 0
     private var started = false
+    private(set) var panelVisible = false
+    var quotaPollInterval: TimeInterval { preferences.refreshMode.interval ?? (panelVisible ? 15 : 60) }
 
     init(defaults: UserDefaults = .standard, client: any QuotaClient = CodexClient(), recovery: RecoveryPolicy = RecoveryPolicy(), reminderCenter: any ReminderNotificationCenter = SystemReminderCenter()) {
         precondition(!recovery.retryDelays.isEmpty && recovery.retryDelays.allSatisfy { $0 > 0 && $0.isFinite })
@@ -117,7 +119,7 @@ final class AppState: ObservableObject {
     }
     var watchDescription: String {
         if preferences.refreshMode != .followClient { return preferences.refreshMode.title + "向服务商核验" }
-        return watchingClient ? "跟随客户端额度变化，收到变化后向服务商核验" : "未发现本机日志；启动、打开面板和唤醒时核验"
+        return (watchingClient ? "跟随客户端额度变化；" : "未发现本机日志；") + "面板显示时每 15 秒、后台每 60 秒补充核验额度"
     }
     var timestampLabel: String {
         if let date = lastSuccessfulAt { return "最近成功核验 " + QuotaPresentation.time(date) }
@@ -189,7 +191,17 @@ final class AppState: ObservableObject {
 
     func panelOpened() {
         guard !isRefreshing, lastFailure?.canRetry != false, nextRetryAt == nil else { return }
-        if !verified || snapshot.map({ Date().timeIntervalSince($0.observedAt) > 15 }) != false { refresh(reason: "打开面板核验") }
+        if !verified || snapshot.map({ Date().timeIntervalSince($0.observedAt) > 2 }) != false { refresh(reason: "打开面板核验") }
+    }
+
+    func setPanelVisible(_ visible: Bool) {
+        guard panelVisible != visible else { return }
+        panelVisible = visible
+        configurePolling()
+    }
+
+    func pollQuota() {
+        refresh(reason: preferences.refreshMode == .followClient ? "兜底额度核验" : "定时核验")
     }
 
     func refresh(reason: String = "手动核验") {
@@ -231,7 +243,7 @@ final class AppState: ObservableObject {
                 cancelRetry()
                 if result.accountScope != nil, let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: "quota-cache.v1") }
                 configureResetCheck()
-                if let scope = result.accountScope,
+                if reason != "兜底额度核验", let scope = result.accountScope,
                    manual || activityUpdatedAt.map({ Date().timeIntervalSince($0) >= 300 }) != false {
                     do {
                         try Task.checkCancellation()
@@ -339,9 +351,9 @@ final class AppState: ObservableObject {
 
     private func configurePolling() {
         pollTimer?.invalidate(); pollTimer = nil
-        guard !paused, let interval = preferences.refreshMode.interval else { return }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh(reason: "定时核验") }
+        guard !paused else { return }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: quotaPollInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollQuota() }
         }
     }
 

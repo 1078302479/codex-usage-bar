@@ -22,7 +22,7 @@ This is an independent community project, not an official OpenAI application or 
 - Compact resets: `HH:mm` for the short window and `MM-dd` for the long window, with independently optional descriptions.
 - Official lifetime tokens, peak daily tokens, longest-running turn, and current/longest activity streaks.
 - A 26-week heatmap with immediate hover/click details and exact daily token counts.
-- Event-following refresh by default, with optional 1-, 5-, and 15-minute polling.
+- Event-following refresh with quota-only fallback checks every 15 seconds while the panel is visible and every 60 seconds in the background. Explicit 1-, 5-, and 15-minute polling remains available.
 - Official reset-credit count, nearest expiry, count expiring within 72 hours, and per-card expiry details without guessing missing dates.
 - Opt-in local expiry reminders 24 hours ahead, with fresh-validation catch-up, persistent account/card deduplication, and cancellation when usage, expiry, or account changes are detected.
 - Automatic recovery from network request failures, timeouts, and child-process disconnections with 5/15/30/60/120/300-second backoff, capped at five minutes. A network-return hint expedites one coalesced query. Authentication, configuration, and compatibility errors require user action instead of repeated automatic retries.

@@ -123,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     func showPopover() {
         NSApp.activate(ignoringOtherApps: true)
         if let panelWindow {
+            state.setPanelVisible(true)
             panelWindow.makeKeyAndOrderFront(nil)
             return
         }
@@ -134,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         updatePresentation()
         resizePopover(requestedHeight: nil)
         state.panelOpened(); popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        state.setPanelVisible(popover.isShown)
         popover.contentViewController?.view.window?.makeKey()
         if !popover.isShown { showPanelWindow() }
     }
@@ -149,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         window.delegate = self
         window.center()
         panelWindow = window
+        state.setPanelVisible(true)
         updatePresentation()
         window.makeKeyAndOrderFront(nil)
     }
@@ -156,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         // Detach the SwiftUI observer tree so background quota/timer publications
         // cannot recompute or redraw a hidden panel. Business state stays alive.
         guard !popover.isShown else { return }
+        if panelWindow == nil { state.setPanelVisible(false) }
         popover.contentViewController = nil
         state.panelDragStart = nil
     }
@@ -165,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             window.delegate = nil
             window.contentViewController = nil
             panelWindow = nil
+            state.setPanelVisible(false)
             return
         }
         guard let window = notification.object as? NSWindow, window === settingsWindow else { return }
@@ -172,6 +177,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         window.contentViewController = nil
         settingsWindow = nil
     }
+    func windowDidMiniaturize(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === panelWindow { state.setPanelVisible(false) }
+    }
+    func windowDidDeminiaturize(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === panelWindow {
+            state.setPanelVisible(true); state.panelOpened()
+        }
+    }
+
     private func resizePopover(requestedHeight: CGFloat?) {
         guard let button = statusItem?.button else { return }
         let available = (button.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
