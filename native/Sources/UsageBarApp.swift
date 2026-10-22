@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private(set) var statusItem: NSStatusItem!
     let popover = NSPopover()
     private(set) var settingsWindow: NSWindow?
+    private(set) var panelWindow: NSWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var menuImageKey: MenuImageKey?
 
@@ -56,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     func applicationDidBecomeActive(_ notification: Notification) {
         state.reminders.refreshPermission()
         state.panelOpened()
+        if settingsWindow == nil && panelWindow == nil && !popover.isShown { showPopover() }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
@@ -103,6 +105,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         popover.contentViewController?.view.appearance = appearance
         settingsWindow?.appearance = appearance
         settingsWindow?.contentView?.appearance = appearance
+        panelWindow?.appearance = appearance
+        panelWindow?.contentView?.appearance = appearance
     }
 
     @objc private func statusClicked() {
@@ -117,6 +121,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func showPopover() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let panelWindow {
+            panelWindow.makeKeyAndOrderFront(nil)
+            return
+        }
         guard let button = statusItem.button else { return }
         if popover.contentViewController == nil {
             popover.contentViewController = NSHostingController(rootView: QuotaPanelView(state: state, openSettings: { [weak self] in self?.openSettings() }))
@@ -126,6 +135,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         resizePopover(requestedHeight: nil)
         state.panelOpened(); popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
+        if !popover.isShown { showPanelWindow() }
+    }
+
+    func showPanelWindow() {
+        if let panelWindow { panelWindow.makeKeyAndOrderFront(nil); return }
+        popover.contentViewController = nil
+        let host = NSHostingController(rootView: QuotaPanelView(state: state, openSettings: { [weak self] in self?.openSettings() }))
+        let window = NSWindow(contentViewController: host)
+        window.title = "CodexUsageBar"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+        panelWindow = window
+        updatePresentation()
+        window.makeKeyAndOrderFront(nil)
     }
     func popoverDidClose(_ notification: Notification) {
         // Detach the SwiftUI observer tree so background quota/timer publications
@@ -136,6 +161,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === panelWindow {
+            window.delegate = nil
+            window.contentViewController = nil
+            panelWindow = nil
+            return
+        }
         guard let window = notification.object as? NSWindow, window === settingsWindow else { return }
         window.delegate = nil
         window.contentViewController = nil

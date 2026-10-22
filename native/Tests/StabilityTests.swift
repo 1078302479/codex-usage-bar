@@ -5,6 +5,7 @@ import Foundation
     @MainActor static func main() throws {
         try recentLogs()
         if CommandLine.arguments.contains("--ui") { presentationLifecycle() }
+        if CommandLine.arguments.contains("--window") { fallbackWindowLifecycle() }
     }
 
     static func recentLogs() throws {
@@ -39,6 +40,38 @@ import Foundation
 
     @MainActor static func settle() {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+
+    @MainActor static func fallbackWindowLifecycle() {
+        _ = NSApplication.shared
+        let suite = "usagebar-window-test-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(defaults: defaults)
+        state.isRefreshing = true
+        let delegate = AppDelegate(state: state)
+        delegate.configurePresentation()
+        let original = state.preferences
+        for _ in 0..<3 {
+            weak var oldHost: NSViewController?
+            autoreleasepool {
+                delegate.showPanelWindow()
+                let window = delegate.panelWindow!
+                oldHost = window.contentViewController
+                precondition(window.isVisible && oldHost != nil)
+                delegate.showPanelWindow()
+                precondition(delegate.panelWindow === window, "Reuse one fallback window")
+                state.preferences.appearance = .dark
+                precondition(window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+                window.close()
+                precondition(delegate.panelWindow == nil && window.contentViewController == nil)
+                state.preferences = original
+            }
+            settle()
+            precondition(oldHost == nil, "Closing fallback releases SwiftUI host")
+            precondition(state.preferences == original, "Fallback preserves user settings")
+        }
+        print("PASS: fallback window visibility, reuse, appearance sync, close/release and preserved preferences")
     }
 
     @MainActor static func presentationLifecycle() {
