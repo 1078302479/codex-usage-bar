@@ -15,7 +15,7 @@ struct QuotaPanelView: View {
             panelFooter
         }
         .overlay(alignment: .bottom) { resizeHandle }
-        .frame(width: 390, height: state.panelHeight)
+        .frame(width: state.secondAccount == nil ? 390 : 460, height: state.panelHeight)
         .onPreferenceChange(PanelContentHeightKey.self) { height in
             Task { @MainActor in state.panelContentMeasured(height) }
         }
@@ -30,7 +30,7 @@ struct QuotaPanelView: View {
             Text("CodexUsageBar").font(.system(size: 13, weight: .semibold))
             Spacer()
             if state.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.75) }
-            Button { state.refresh() } label: { Image(systemName: "arrow.clockwise") }
+            Button { state.refreshAllAccounts() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.plain).disabled(state.isRefreshing).help("向服务商核验额度").accessibilityLabel("刷新额度")
         }.padding(.horizontal, 20).padding(.vertical, 15)
     }
@@ -42,12 +42,16 @@ struct QuotaPanelView: View {
 
     private var panelContent: some View {
         VStack(spacing: 0) {
-            accountHeader
-            quotaSection
-            ResetCreditSectionView(state: state, openSettings: openSettings)
-            TokenActivityView(state: state)
-            statusSummary
-            statusAlerts
+            if let second = state.secondAccount {
+                DualAccountPanelView(primary: state, secondary: second, openSettings: openSettings)
+            } else {
+                accountHeader
+                quotaSection
+                ResetCreditSectionView(state: state, openSettings: openSettings)
+                TokenActivityView(state: state)
+                statusSummary
+                statusAlerts
+            }
         }
         .frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
@@ -61,7 +65,7 @@ struct QuotaPanelView: View {
             Capsule().fill(PanelPalette.accountAccent)
                 .frame(width: 3, height: 34).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Codex 账号").font(.system(size: 10, weight: .medium))
+                Text(state.secondAccount == nil ? "Codex 账号" : "账号 A · 本机 Codex").font(.system(size: 10, weight: .medium))
                     .foregroundStyle(PanelPalette.secondary)
                 Text(state.snapshot?.accountLabel ?? "当前登录待核验")
                     .font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -290,6 +294,12 @@ struct UsageSettingsView: View {
                     Text("登录由 Codex 管理。应用不复制认证文件，不保存 token；CLI 和桌面客户端可能使用不同账号，请核对来源。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Section("双账号监测") {
+                    Toggle("同时监测第二个账号", isOn: Binding(
+                        get: { state.secondAccount != nil },
+                        set: { state.setSecondAccountEnabled($0) }))
+                    if let second = state.secondAccount { SecondaryAccountSettingsView(state: second) }
+                }
                 Section("数据口径") {
                     Text("直接展示服务商返回的已用比例，以 100 − 已用计算剩余；两个窗口不相加。日志只用于触发核验，不覆盖当前账号额度。重置时间到达后等待新响应，不凭空补成 100%。")
                         .font(.caption).foregroundStyle(.secondary)
@@ -307,7 +317,7 @@ struct UsageSettingsView: View {
                     }
                 }
                 Section("关于 CodexUsageBar") {
-                    LabeledContent("版本", value: "0.1.5")
+                    LabeledContent("版本", value: "0.1.6")
                     Text("只读套餐额度，常驻 macOS 菜单栏。时间按北京时间显示。")
                     Text("Token 活动来自官方账号统计；支持登录时自动启动与重置卡到期通知。")
                         .foregroundStyle(.secondary)

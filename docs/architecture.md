@@ -1,5 +1,13 @@
 # 技术说明 / Architecture
 
+## 双账号 / Independent second account
+
+The primary `AppState` can own a secondary `AppState`, each with a separate `CodexClient`, request queue, quota cache, activity data, watcher and recovery state. B uses a dedicated UserDefaults suite and an owner-private CODEX_HOME under Application Support. No authentication files are copied. Only display/refresh preferences are shared. Sleep, panel visibility and shutdown propagate to both states; disabling B stops its state without deleting Codex-managed credentials.
+
+B's subprocess explicitly uses `cli_auth_credentials_store="file"` and removes inherited API-key/access-token environment overrides. The same process handles official `account/login/start` (ChatGPT browser flow), login completion notifications and subsequent quota reads. Only HTTPS login URLs on official auth/chatgpt hosts may open. Login is cancelled by closing the owned process, times out after 10 minutes, and is suspended from quota refresh while pending. Default A connections cannot start a login flow through this API.
+
+The menu bar uses a separate status item prefixed B and the 460-point panel uses two equal quota comparison cards. Selecting a card switches the detail area to that account’s reset credits, Token activity and status; single-account mode retains its original 390-point layout. Identical account scopes are reported, not combined. B receives a no-op notification center so its state cannot cancel A's reminders. The B detail view exposes independently scoped Token activity and reset-credit details while withholding the primary account’s reminder controls.
+
 ## 数据链路 / Data flow
 
 ```text
@@ -19,7 +27,7 @@ NSStatusItem / SwiftUI
 - `initialize` → `initialized` 建立独立连接。
 - `account/read` → `account/rateLimits/read` → `account/read` 核对读取前后账号。
 - `account/usage/read` 获取官方汇总及每日桶，也验证账号作用域。
-- 只允许所需的只读 RPC，不发起模型任务或额度重置操作。
+- 默认账号只允许所需的只读 RPC；独立账号额外允许用户主动触发的 `account/login/start`。不发起模型任务或额度重置操作。
 
 The app owns one App Server child process. An actor coordinates requests, timeouts, notifications, and termination. It only shuts down the process it created. No arbitrary RPC proxy or credential-entry UI is exposed.
 

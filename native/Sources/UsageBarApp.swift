@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private(set) var panelWindow: NSWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var menuImageKey: MenuImageKey?
+    private var secondStatusItem: NSStatusItem?
+    private var secondImageKey: MenuImageKey?
 
     private struct MenuImageKey: Equatable {
         let stacked: Bool
@@ -107,6 +109,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         settingsWindow?.contentView?.appearance = appearance
         panelWindow?.appearance = appearance
         panelWindow?.contentView?.appearance = appearance
+        updateSecondAccountMenu()
+    }
+
+    private func updateSecondAccountMenu() {
+        guard let second = state.secondAccount else {
+            if let item = secondStatusItem { NSStatusBar.system.removeStatusItem(item) }
+            secondStatusItem = nil; secondImageKey = nil
+            return
+        }
+        if secondStatusItem == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.button?.target = self; item.button?.action = #selector(statusClicked)
+            item.button?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            secondStatusItem = item
+        }
+        guard let button = secondStatusItem?.button else { return }
+        var prefs = state.preferences
+        prefs.showIcon = false
+        let lines = QuotaPresentation.stackedLines(snapshot: second.snapshot, preferences: prefs, verified: second.verified, now: second.now).map { "B " + $0 }
+        let colors = MenuBarRenderer.stackedColors(snapshot: second.snapshot, preferences: prefs, verified: second.verified, now: second.now)
+        let key = MenuImageKey(stacked: prefs.isStacked, lines: lines, showIcon: false, appearance: prefs.appearance, colors: colors)
+        if prefs.isStacked {
+            button.title = ""
+            if secondImageKey != key { button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: false, colors: colors) }
+            button.imagePosition = .imageOnly
+        } else {
+            button.image = nil
+            let title = NSMutableAttributedString(string: "B ")
+            title.append(MenuBarRenderer.title(snapshot: second.snapshot, preferences: prefs, verified: second.verified, now: second.now))
+            button.attributedTitle = title
+        }
+        secondImageKey = key
+        button.toolTip = ["CodexUsageBar · 账号 B", second.snapshot?.accountLabel ?? "独立账号待登录", second.statusDetail].joined(separator: "\n")
+        button.setAccessibilityLabel("账号 B " + second.menuTitle)
     }
 
     @objc private func statusClicked() {
@@ -194,13 +230,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         // Header, footer and resize grip remain outside the scrollable content.
         let desired = state.panelPreferredHeight ?? (state.panelContentHeight > 0 ? state.panelContentHeight + 94 : 820)
         let height = min(maximum, max(240, desired))
-        guard abs(state.panelHeight - height) > 0.5 || popover.contentSize.height != height else { return }
+        let width: CGFloat = state.secondAccount == nil ? 390 : 460
+        guard abs(state.panelHeight - height) > 0.5 || popover.contentSize.height != height || popover.contentSize.width != width else { return }
         state.panelHeight = height
-        let size = NSSize(width: 390, height: height)
+        let size = NSSize(width: width, height: height)
         popover.contentViewController?.preferredContentSize = size
         popover.contentSize = size
     }
-    @objc private func refreshQuota() { state.refresh() }
+    @objc private func refreshQuota() { state.refreshAllAccounts() }
     @objc func openSettings() {
         popover.performClose(nil)
         if settingsWindow == nil {

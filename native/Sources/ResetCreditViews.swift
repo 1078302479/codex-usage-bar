@@ -4,6 +4,7 @@ import SwiftUI
 struct ResetCreditSectionView: View {
     @ObservedObject var state: AppState
     let openSettings: () -> Void
+    var allowsReminders = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -105,10 +106,16 @@ struct ResetCreditSectionView: View {
     }
 
     private var reminderButton: some View {
-        Button { state.settingsTab = .reminders; openSettings() } label: {
-            Label("提醒设置", systemImage: "bell").font(.system(size: 10))
-        }.buttonStyle(.plain).foregroundStyle(PanelPalette.link)
-        .accessibilityLabel("设置重置卡到期提醒")
+        Group {
+            if allowsReminders {
+                Button { state.settingsTab = .reminders; openSettings() } label: {
+                    Label("提醒设置", systemImage: "bell").font(.system(size: 10))
+                }.buttonStyle(.plain).foregroundStyle(PanelPalette.link)
+                    .accessibilityLabel("设置重置卡到期提醒")
+            } else {
+                Text("账号 B 暂不发送到期通知").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
+            }
+        }
     }
 
     private func expiryCard(_ expiry: Date) -> some View {

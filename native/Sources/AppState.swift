@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 enum SettingsTab: Hashable { case menuBar, connection, reminders, appearance }
 
@@ -10,6 +11,7 @@ final class AppState: ObservableObject {
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
     @Published var resetCreditsExpanded = false
+    @Published var showingSecondAccountDetails = false
     var panelContentHeight: CGFloat = 0
     var panelPreferredHeight: CGFloat?
     var panelDragStart: CGFloat?
@@ -26,11 +28,13 @@ final class AppState: ObservableObject {
             if oldValue.refreshMode != preferences.refreshMode { configurePolling() }
             if oldValue.selectedBucket != preferences.selectedBucket { configureResetCheck() }
             if oldValue.cliPath != preferences.cliPath {
+                cancelSignIn()
                 invalidateConnection()
                 clearAccount()
                 lastFailure = nil; retryAttempt = 0
                 scheduleRefresh(reason: "更换 Codex", delay: 0)
             }
+            if let secondAccount, secondAccount.preferences != preferences { secondAccount.preferences = preferences }
             onDisplayChange?()
         }
     }
@@ -45,6 +49,14 @@ final class AppState: ObservableObject {
     @Published var lastReason = "启动核验"
     @Published var watchingClient = false
     @Published var cliDraft = ""
+    @Published private(set) var secondAccount: AppState?
+    @Published private(set) var isSigningIn = false
+    @Published private(set) var loginMessage: String?
+    private var loginTask: Task<Void, Never>?
+    private var loginExpiry: Task<Void, Never>?
+    private let codexHome: URL?
+    private let loginOpener: (URL) -> Bool
+    private let secondaryFactory: (() -> AppState)?
     @Published private(set) var lastFailure: CodexFailure?
     @Published private(set) var lastSuccessfulAt: Date?
     @Published private(set) var nextRetryAt: Date?
@@ -78,9 +90,92 @@ final class AppState: ObservableObject {
     private(set) var panelVisible = false
     var quotaPollInterval: TimeInterval { preferences.refreshMode.interval ?? (panelVisible ? 15 : 60) }
 
-    init(defaults: UserDefaults = .standard, client: any QuotaClient = CodexClient(), recovery: RecoveryPolicy = RecoveryPolicy(), reminderCenter: any ReminderNotificationCenter = SystemReminderCenter()) {
+    static var secondAccountHome: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/CodexUsageBar/accounts/secondary", isDirectory: true)
+    }
+
+    func setSecondAccountEnabled(_ enabled: Bool) {
+        guard codexHome == nil else { return }
+        defaults.set(enabled, forKey: "second-account.enabled.v1")
+        if enabled, secondAccount == nil {
+            let home = Self.secondAccountHome
+            let secondary: AppState
+            if let secondaryFactory { secondary = secondaryFactory() }
+            else {
+                let saved = UserDefaults(suiteName: "com.guoyuming.UsageBar.second-account")!
+                secondary = AppState(defaults: saved, client: CodexClient(codexHome: home),
+                    reminderCenter: MonitoringOnlyReminderCenter(), codexHome: home)
+            }
+            secondary.preferences = preferences
+            secondary.onDisplayChange = { [weak self] in self?.onDisplayChange?() }
+            secondAccount = secondary
+            if started { secondary.start() }
+            secondary.setPanelVisible(panelVisible)
+        } else if !enabled, let secondary = secondAccount {
+            secondAccount = nil
+            secondary.onDisplayChange = nil
+            Task { await secondary.stop() }
+        }
+        onDisplayChange?()
+    }
+
+    func signInSecondAccount() {
+        guard codexHome != nil, !isSigningIn, !paused else { return }
+        invalidateConnection(); clearAccount()
+        lastFailure = nil; isSigningIn = true; loginMessage = "正在打开官方登录页面，请选择另一个账号。"
+        onDisplayChange?()
+        let epoch = configurationEpoch
+        let barrier = connectionBarrier
+        loginTask = Task { [weak self, client] in
+            guard let self else { return }
+            await barrier?.value
+            guard !Task.isCancelled, configurationEpoch == epoch, isSigningIn else { return }
+            connectionBarrier = nil
+            await client.setHandler { [weak self] signal in
+                Task { @MainActor in
+                    guard let self, self.configurationEpoch == epoch else { return }
+                    self.handle(signal)
+                }
+            }
+            do {
+                let url = try await client.beginLogin(customPath: preferences.cliPath)
+                guard !Task.isCancelled, configurationEpoch == epoch, isSigningIn else { return }
+                guard loginOpener(url) else { throw CodexFailure.serviceUnavailable }
+                loginMessage = "请在浏览器完成第二账号登录；本机原账号不受影响。"
+                loginExpiry = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(600)) } catch { return }
+                    self?.cancelSignIn()
+                    self?.loginMessage = "登录等待已超时，请重试。"
+                }
+            } catch {
+                guard configurationEpoch == epoch, !Task.isCancelled else { return }
+                isSigningIn = false
+                loginMessage = "无法开始官方登录，请检查 Codex 版本或连接后重试。"
+                recordFailure(Self.failure(error))
+            }
+        }
+    }
+
+    func cancelSignIn() {
+        guard isSigningIn else { return }
+        loginTask?.cancel(); loginTask = nil; loginExpiry?.cancel(); loginExpiry = nil
+        isSigningIn = false; loginMessage = "已取消登录。"
+        invalidateConnection()
+        recordFailure(.authRequired)
+    }
+
+    func refreshAllAccounts() {
+        refresh()
+        secondAccount?.refresh()
+    }
+
+    init(defaults: UserDefaults = .standard, client: any QuotaClient = CodexClient(), recovery: RecoveryPolicy = RecoveryPolicy(), reminderCenter: any ReminderNotificationCenter = SystemReminderCenter(), codexHome: URL? = nil,
+         loginOpener: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }, secondaryFactory: (() -> AppState)? = nil) {
         precondition(!recovery.retryDelays.isEmpty && recovery.retryDelays.allSatisfy { $0 > 0 && $0.isFinite })
         self.defaults = defaults; self.client = client; self.recovery = recovery
+        self.codexHome = codexHome
+        self.loginOpener = loginOpener; self.secondaryFactory = secondaryFactory
         reminders = ResetCreditReminderController(defaults: defaults, center: reminderCenter)
         if let data = defaults.data(forKey: "preferences.v1"), let saved = try? JSONDecoder().decode(Preferences.self, from: data) { preferences = saved }
         else { preferences = Preferences() }
@@ -132,7 +227,7 @@ final class AppState: ObservableObject {
         guard !started else { return }
         started = true; paused = false
         reminders.start()
-        let home = ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+        let home = codexHome ?? ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
         let monitor = ClientLogMonitor(root: home.appendingPathComponent("sessions")) { [weak self] date in
             Task { @MainActor in
                 guard let self else { return }
@@ -145,11 +240,18 @@ final class AppState: ObservableObject {
         connectivity = network; network.start()
         configureClock(); configurePolling()
         refresh(reason: "启动核验")
+        if codexHome == nil, defaults.bool(forKey: "second-account.enabled.v1") { setSecondAccountEnabled(true) }
     }
 
     private func handle(_ signal: CodexSignal) {
         guard !paused else { return }
         switch signal {
+        case .loginCompleted(let success):
+            guard isSigningIn else { return }
+            isSigningIn = false; loginExpiry?.cancel(); loginExpiry = nil
+            loginMessage = success ? "登录完成，正在核验第二账号。" : "登录未完成，请重试。"
+            if success { lastFailure = nil; refresh(reason: "登录完成核验") }
+            else { recordFailure(.authRequired) }
         case .quotaChanged:
             if preferences.refreshMode == .followClient { scheduleRefresh(reason: "额度变化通知", delay: recovery.mergeDelay) }
         case .accountChanged:
@@ -164,6 +266,7 @@ final class AppState: ObservableObject {
             else { scheduleRefresh(reason: "登录状态变化", delay: recovery.mergeDelay) }
             onDisplayChange?()
         case .disconnected(let failure):
+            if isSigningIn { isSigningIn = false; loginExpiry?.cancel(); loginMessage = "登录连接已断开，请重新登录。" }
             if isRefreshing { disconnectDuringRefresh = failure }
             else if lastFailure?.canRetry != false { recordFailure(failure) }
         }
@@ -198,6 +301,7 @@ final class AppState: ObservableObject {
     func setPanelVisible(_ visible: Bool) {
         guard panelVisible != visible else { return }
         panelVisible = visible
+        secondAccount?.setPanelVisible(visible)
         configurePolling()
     }
 
@@ -216,7 +320,7 @@ final class AppState: ObservableObject {
     }
 
     func refresh(reason: String = "手动核验") {
-        guard !paused else { return }
+        guard !paused, !isSigningIn else { return }
         let manual = reason == "手动核验" || reason == "应用连接设置"
         guard manual || (lastFailure?.canRetry != false && nextRetryAt == nil) else { return }
         if isRefreshing {
@@ -256,6 +360,7 @@ final class AppState: ObservableObject {
                 guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil }
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
+                if codexHome != nil { loginMessage = "账号 B 已核验。" }
                 reminders.update(snapshot: result, verified: true)
                 configureCreditCheck()
                 cancelRetry()
@@ -411,6 +516,7 @@ final class AppState: ObservableObject {
 
     func pause() {
         guard !paused else { return }
+        secondAccount?.pause(); cancelSignIn()
         paused = true; verified = false; invalidateConnection()
         reminders.update(snapshot: nil, verified: false)
         creditCheckTimer?.invalidate(); creditCheckTimer = nil
@@ -420,10 +526,13 @@ final class AppState: ObservableObject {
     func resume() {
         guard paused else { return }
         paused = false; verified = false; now = Date()
+        secondAccount?.resume()
         configureClock(); configurePolling(); scheduleRefresh(reason: "唤醒核验", delay: recovery.wakeDelay)
         onDisplayChange?()
     }
     func stop() async {
+        cancelSignIn()
+        if let secondAccount { await secondAccount.stop() }
         paused = true; invalidateConnection()
         watcher?.stop(); watcher = nil; watchingClient = false
         connectivity?.stop(); connectivity = nil

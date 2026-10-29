@@ -7,6 +7,8 @@ xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/QuotaModels.swift" "$ROOT/nativ
 xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Sources/ActivityHeatmap.swift" "$ROOT/native/Tests/HeatmapTests.swift" -o "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/QuotaCoreTests"
+xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/MultiAccountTests.swift" -o "$ROOT/.build/MultiAccountTests"
+"$ROOT/.build/MultiAccountTests"
 xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/MenuColorTests.swift" -o "$ROOT/.build/MenuColorTests"
 "$ROOT/.build/MenuColorTests"
 xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/ResetCreditTests.swift" -o "$ROOT/.build/ResetCreditTests"

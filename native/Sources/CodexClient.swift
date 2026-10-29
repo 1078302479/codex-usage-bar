@@ -6,17 +6,23 @@ private final class OwnedProcess: @unchecked Sendable {
     init(_ process: Process) { self.process = process }
 }
 
-enum CodexSignal: Sendable { case quotaChanged, accountChanged, disconnected(CodexFailure) }
+enum CodexSignal: Sendable { case quotaChanged, accountChanged, loginCompleted(Bool), disconnected(CodexFailure) }
 
 protocol QuotaClient: Sendable {
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) async
     func fetch(customPath: String) async throws -> QuotaSnapshot
     func fetchUsage(expectedScope: String) async throws -> TokenActivity
     func shutdown() async
+    func beginLogin(customPath: String) async throws -> URL
+}
+
+extension QuotaClient {
+    func beginLogin(customPath: String) async throws -> URL { throw CodexFailure.unsupported }
 }
 
 actor CodexClient: QuotaClient {
     private let requestTimeout: TimeInterval
+    private let codexHome: URL?
     private var process: Process?
     private var input: FileHandle?
     private var output: FileHandle?
@@ -34,12 +40,29 @@ actor CodexClient: QuotaClient {
     private var deferredUpdates: [Data] = []
     private var readingQuota = false
 
-    init(requestTimeout: TimeInterval = 12) {
+    init(requestTimeout: TimeInterval = 12, codexHome: URL? = nil) {
         precondition(requestTimeout > 0 && requestTimeout.isFinite)
         self.requestTimeout = requestTimeout
+        self.codexHome = codexHome
     }
 
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) { handler = value }
+
+    func beginLogin(customPath: String) async throws -> URL {
+        guard codexHome != nil else { throw CodexFailure.unsupported }
+        let executable = try Self.discover(custom: customPath)
+        if process?.isRunning != true || path != executable || !ready { try await start(executable) }
+        let raw = try await rpc("account/login/start", params: ["type": "chatgpt"])
+        guard let result = try JSONSerialization.jsonObject(with: raw) as? [String: Any],
+              let value = result["authUrl"] as? String,
+              let url = URL(string: value), Self.isOfficialLoginURL(url) else { throw CodexFailure.invalidResponse }
+        return url
+    }
+
+    static func isOfficialLoginURL(_ url: URL) -> Bool {
+        url.scheme == "https" && ["auth.openai.com", "chatgpt.com", "www.chatgpt.com"].contains(url.host?.lowercased() ?? "")
+            && url.user == nil && url.password == nil
+    }
 
     static func discover(custom: String) throws -> String {
         let fm = FileManager.default
@@ -132,10 +155,20 @@ actor CodexClient: QuotaClient {
         let task = Process(); let stdin = Pipe(); let stdout = Pipe(); let stderr = Pipe()
         task.executableURL = URL(fileURLWithPath: executable)
         task.arguments = ["app-server", "--stdio", "-c", "analytics.enabled=false"]
+        if let codexHome {
+            try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            // Both the login flow and quota requests use this same isolated store.
+            task.arguments! += ["-c", "cli_auth_credentials_store=\"file\""]
+        }
         task.standardInput = stdin; task.standardOutput = stdout; task.standardError = stderr
         task.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         var env = ProcessInfo.processInfo.environment
+        if let codexHome {
+            env["CODEX_HOME"] = codexHome.path
+            for name in ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"] { env.removeValue(forKey: name) }
+        }
         env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\(home)/.npm-global/bin"
         task.environment = env
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -153,7 +186,7 @@ actor CodexClient: QuotaClient {
         path = executable
         do { try task.run() } catch { shutdown(); throw CodexFailure.processStopped }
         do {
-            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.5"]])
+            _ = try await rpc("initialize", params: ["clientInfo": ["name": "usagebar_macos", "title": "CodexUsageBar", "version": "0.1.6"]])
             try checkSession(current)
             try send(["method": "initialized", "params": [:]])
             ready = true
@@ -167,7 +200,7 @@ actor CodexClient: QuotaClient {
 
     private func rpc(_ method: String, params: [String: Any]? = nil) async throws -> Data {
         try Task.checkCancellation()
-        guard ["initialize", "account/read", "account/rateLimits/read", "account/usage/read"].contains(method), process?.isRunning == true else { throw CodexFailure.processStopped }
+        guard ["initialize", "account/read", "account/rateLimits/read", "account/usage/read", "account/login/start"].contains(method), process?.isRunning == true else { throw CodexFailure.processStopped }
         counter += 1; let id = counter; let token = generation
         var message: [String: Any] = ["id": id, "method": method]
         if let params { message["params"] = params }
@@ -203,6 +236,9 @@ actor CodexClient: QuotaClient {
                     resolve(id, result: .success(raw))
                 } else { resolve(id, result: .failure(CodexFailure.invalidResponse)) }
             } else if let method = value["method"] as? String {
+                if method == "account/login/completed", let params = value["params"] as? [String: Any] {
+                    handler?(.loginCompleted(params["success"] as? Bool == true))
+                }
                 // Startup announces the initial account too. fetch() validates it
                 // before/after the quota read; this is not an external switch.
                 if method == "account/updated", ready { handler?(.accountChanged) }

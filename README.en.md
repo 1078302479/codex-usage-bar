@@ -101,6 +101,16 @@ The app does not directly read authentication files, persist tokens, or start mo
 
 ## Data and refresh behavior
 
+### Two-account monitoring (v0.1.6 development)
+
+Enable **Settings → Connection & Refresh → Two-account monitoring**, choose **Sign in to a second account**, and select another ChatGPT account on the official login page. Account A follows the local Codex login; account B has an independent session. Both are checked concurrently, with side-by-side quota/reset cards. Select either card to view its reset credits, Token activity, and connection status below. A `B` prefix identifies the secondary menu bar item. The panel's top refresh button validates both accounts.
+
+B uses `~/Library/Application Support/CodexUsageBar/accounts/secondary` as its isolated `CODEX_HOME`, with credentials managed by Codex in a user-private directory. The app never reads or copies A's authentication files. Disabling B stops monitoring but retains its login for later use. Reset-credit notifications currently remain exclusive to A. Signing into the same account twice does not combine or increase allowance.
+
+This feature is in the source development version and is not included in the v0.1.5 download.
+
+### Refresh rules
+
 - Remaining allowance is `100 − usedPercent`, with independent windows.
 - The default mode observes local quota events and validates changes against the service. Startup, opening the panel, waking, and reset boundaries also trigger checks.
 - **Instant synchronization with the Codex client or other devices is not guaranteed.** Remote changes may appear at the next validation.
