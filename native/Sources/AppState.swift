@@ -11,7 +11,13 @@ final class AppState: ObservableObject {
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
     @Published var resetCreditsExpanded = false
-    @Published var showingSecondAccountDetails = false
+    @Published var showingSecondAccountDetails = false {
+        didSet {
+            guard oldValue != showingSecondAccountDetails else { return }
+            onDisplayChange?()
+        }
+    }
+    var displayedAccount: AppState { showingSecondAccountDetails ? (secondAccount ?? self) : self }
     var panelContentHeight: CGFloat = 0
     var panelPreferredHeight: CGFloat?
     var panelDragStart: CGFloat?
@@ -113,6 +119,7 @@ final class AppState: ObservableObject {
             if started { secondary.start() }
             secondary.setPanelVisible(panelVisible)
         } else if !enabled, let secondary = secondAccount {
+            showingSecondAccountDetails = false
             secondAccount = nil
             secondary.onDisplayChange = nil
             Task { await secondary.stop() }

@@ -52,6 +52,15 @@ private actor ProfileClient: QuotaClient {
         first.refresh(reason: "启动核验"); second.refresh(reason: "启动核验")
         try await wait("both profiles verified") { first.verified && second.verified && !first.isRefreshing && !second.isRefreshing }
         precondition(first.snapshot?.accountScope == "A" && second.snapshot?.accountScope == "B")
+        var displayChanges = 0
+        first.onDisplayChange = { displayChanges += 1 }
+        precondition(first.displayedAccount === first)
+        first.showingSecondAccountDetails = true
+        precondition(first.displayedAccount === second && displayChanges == 1, "Selecting B immediately updates the menu source")
+        precondition(first.displayedAccount.menuTitle.contains("20%"), "Selected B menu uses B quota")
+        first.showingSecondAccountDetails = false
+        precondition(first.displayedAccount === first && displayChanges == 2)
+        precondition(first.displayedAccount.menuTitle.contains("90%"), "Selected A menu uses A quota")
         precondition(a.data(forKey: "quota-cache.v1") != b.data(forKey: "quota-cache.v1"), "Profile caches must differ")
         first.setPanelVisible(true)
         precondition(second.panelVisible && second.quotaPollInterval == 15)
@@ -79,6 +88,7 @@ private actor ProfileClient: QuotaClient {
         first.setSecondAccountEnabled(false)
         try await wait("disabled child stopped") { await clientB.shutdowns > 0 }
         precondition(first.secondAccount == nil && !a.bool(forKey: "second-account.enabled.v1"))
+        precondition(first.displayedAccount === first && !first.showingSecondAccountDetails, "Disabling B restores A as the menu source")
         await first.stop()
     }
 

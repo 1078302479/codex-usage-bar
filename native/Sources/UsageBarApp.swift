@@ -11,8 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private(set) var panelWindow: NSWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var menuImageKey: MenuImageKey?
-    private var secondStatusItem: NSStatusItem?
-    private var secondImageKey: MenuImageKey?
 
     private struct MenuImageKey: Equatable {
         let stacked: Bool
@@ -72,8 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     private func updatePresentation() {
         guard let button = statusItem?.button else { return }
-        let lines = QuotaPresentation.stackedLines(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
-        let colors = MenuBarRenderer.stackedColors(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
+        let displayed = state.displayedAccount
+        let lines = QuotaPresentation.stackedLines(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
+        let colors = MenuBarRenderer.stackedColors(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
         let imageKey = MenuImageKey(stacked: state.preferences.isStacked,
                                    lines: state.preferences.isStacked ? lines : [],
                                    showIcon: state.preferences.showIcon, appearance: state.preferences.appearance, colors: colors)
@@ -84,17 +83,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             }
             button.imagePosition = .imageOnly
         } else {
-            button.title = state.menuTitle
-            button.attributedTitle = MenuBarRenderer.title(snapshot: state.snapshot, preferences: state.preferences, verified: state.verified, now: state.now)
+            button.title = displayed.menuTitle
+            button.attributedTitle = MenuBarRenderer.title(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
             if state.preferences.showIcon {
                 if menuImageKey != imageKey { button.image = ProviderIcon.codex() }
                 button.imagePosition = .imageLeading
             } else { button.image = nil }
         }
         menuImageKey = imageKey
-        button.toolTip = ["CodexUsageBar", state.snapshot?.accountLabel ?? "账号待核验", state.updateStatus.title,
-                          state.statusDetail, state.timestampLabel, state.watchDescription].joined(separator: "\n")
-        button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : state.menuTitle))
+        button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : (state.showingSecondAccountDetails ? "CodexUsageBar · 账号 B" : "CodexUsageBar · 账号 A"), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,
+                          displayed.statusDetail, displayed.timestampLabel, displayed.watchDescription].joined(separator: "\n")
+        button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : displayed.menuTitle))
         let appearance: NSAppearance?
         switch state.preferences.appearance {
         case .dark: appearance = NSAppearance(named: .darkAqua)
@@ -109,40 +108,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         settingsWindow?.contentView?.appearance = appearance
         panelWindow?.appearance = appearance
         panelWindow?.contentView?.appearance = appearance
-        updateSecondAccountMenu()
-    }
-
-    private func updateSecondAccountMenu() {
-        guard let second = state.secondAccount else {
-            if let item = secondStatusItem { NSStatusBar.system.removeStatusItem(item) }
-            secondStatusItem = nil; secondImageKey = nil
-            return
-        }
-        if secondStatusItem == nil {
-            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            item.button?.target = self; item.button?.action = #selector(statusClicked)
-            item.button?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-            secondStatusItem = item
-        }
-        guard let button = secondStatusItem?.button else { return }
-        var prefs = state.preferences
-        prefs.showIcon = false
-        let lines = QuotaPresentation.stackedLines(snapshot: second.snapshot, preferences: prefs, verified: second.verified, now: second.now).map { "B " + $0 }
-        let colors = MenuBarRenderer.stackedColors(snapshot: second.snapshot, preferences: prefs, verified: second.verified, now: second.now)
-        let key = MenuImageKey(stacked: prefs.isStacked, lines: lines, showIcon: false, appearance: prefs.appearance, colors: colors)
-        if prefs.isStacked {
-            button.title = ""
-            if secondImageKey != key { button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: false, colors: colors) }
-            button.imagePosition = .imageOnly
-        } else {
-            button.image = nil
-            let title = NSMutableAttributedString(string: "B ")
-            title.append(MenuBarRenderer.title(snapshot: second.snapshot, preferences: prefs, verified: second.verified, now: second.now))
-            button.attributedTitle = title
-        }
-        secondImageKey = key
-        button.toolTip = ["CodexUsageBar · 账号 B", second.snapshot?.accountLabel ?? "独立账号待登录", second.statusDetail].joined(separator: "\n")
-        button.setAccessibilityLabel("账号 B " + second.menuTitle)
     }
 
     @objc private func statusClicked() {
