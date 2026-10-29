@@ -244,7 +244,7 @@ enum CodexFailure: Error, LocalizedError, Sendable, Equatable {
     }
     var errorDescription: String? {
         switch self {
-        case .missingCLI: return "未找到 Codex CLI，请在设置中选择本机可执行文件。"
+        case .missingCLI: return "所选路径中未找到 Codex CLI。请在设置中选择 Codex / ChatGPT 应用或 codex 可执行文件，也可留空自动发现。"
         case .authRequired: return "本机 Codex 尚未提供可用的 ChatGPT 登录，请在终端完成 codex login 后重试。"
         case .unsupported: return "当前 Codex 版本不支持额度读取，请更新 Codex。"
         case .timeout: return "额度查询超时，将自动重新核验，也可点击刷新立即重试。"

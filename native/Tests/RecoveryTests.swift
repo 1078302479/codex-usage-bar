@@ -37,6 +37,7 @@ private actor TestQuotaClient: QuotaClient {
 @main struct RecoveryTests {
     @MainActor static func main() async throws {
         policyAndClassification()
+        try executableDiscovery()
         try await backoffAndReconnect()
         try await userActionErrors()
         try await networkRecovery()
@@ -105,6 +106,39 @@ private actor TestQuotaClient: QuotaClient {
         require(await client.calls == calls, "Sleep pauses fallback reads")
         await state.stop()
         print("PASS: missed reset-credit events, 15s/60s fallback, quota-only requests, user intervals, backoff and sleep")
+    }
+
+    static func executableDiscovery() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("usagebar-discovery-" + UUID().uuidString)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        func reject(_ path: String) {
+            do { _ = try CodexClient.discover(custom: path); fatalError("Accepted invalid CLI path") }
+            catch { require(error as? CodexFailure == .missingCLI, "Invalid paths need actionable configuration errors") }
+        }
+        reject(root.path) // Directories have execute permission, but are not CLI files.
+        reject(root.appendingPathComponent("missing").path)
+        for (name, relative) in [
+            ("ChatGPT.app", "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
+            ("Codex.app", "Contents/Resources/codex"),
+            ("CodexCLI.app", "Contents/MacOS/codex")
+        ] {
+            let bundle = root.appendingPathComponent(name)
+            let cli = bundle.appendingPathComponent(relative)
+            try fm.createDirectory(at: cli.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("#!/bin/sh\nexit 0\n".utf8).write(to: cli)
+            reject(bundle.path) // A non-executable nested file must also be rejected.
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cli.path)
+            require(try CodexClient.discover(custom: bundle.path) == cli.path, "Resolve supported app bundle to its CLI")
+            require(try CodexClient.discover(custom: cli.path) == cli.path, "Preserve explicit executable paths")
+        }
+        let guiOnly = root.appendingPathComponent("Unrelated.app/Contents/MacOS/DesktopGUI")
+        try fm.createDirectory(at: guiOnly.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: guiOnly)
+        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: guiOnly.path)
+        reject(root.appendingPathComponent("Unrelated.app").path)
+        print("PASS: ChatGPT/Codex app bundle discovery, explicit executables and invalid path rejection")
     }
 
     static func policyAndClassification() {

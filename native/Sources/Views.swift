@@ -283,6 +283,8 @@ struct UsageSettingsView: View {
                         Button("选择…") { chooseCLI() }
                         Button("应用") { state.preferences.cliPath = state.cliDraft.trimmingCharacters(in: .whitespacesAndNewlines); state.refresh(reason: "应用连接设置") }
                     }
+                    Text("可选择 Codex / ChatGPT 应用或 codex 可执行文件；留空自动发现。")
+                        .font(.caption).foregroundStyle(.secondary)
                     if let error = state.errorMessage { Text(error).font(.caption).foregroundStyle(.orange) }
                     Button("复制 Codex 登录命令") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString("codex login", forType: .string) }
                     Text("登录由 Codex 管理。应用不复制认证文件，不保存 token；CLI 和桌面客户端可能使用不同账号，请核对来源。")
@@ -320,6 +322,7 @@ struct UsageSettingsView: View {
     private func chooseCLI() {
         let picker = NSOpenPanel(); picker.canChooseDirectories = false; picker.canChooseFiles = true
         picker.allowsMultipleSelection = false; picker.prompt = "选择 Codex"
+        picker.message = "选择 Codex / ChatGPT 应用或 codex 可执行文件，应用会自动定位内置 CLI。"
         if picker.runModal() == .OK, let url = picker.url { state.cliDraft = url.path }
     }
 }

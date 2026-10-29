@@ -43,15 +43,30 @@ actor CodexClient: QuotaClient {
 
     static func discover(custom: String) throws -> String {
         let fm = FileManager.default
+        func executableFile(_ path: String) -> Bool {
+            var isDirectory: ObjCBool = false
+            return fm.fileExists(atPath: path, isDirectory: &isDirectory)
+                && !isDirectory.boolValue && fm.isExecutableFile(atPath: path)
+        }
         if !custom.isEmpty {
-            guard fm.isExecutableFile(atPath: custom) else { throw CodexFailure.missingCLI }
+            // NSOpenPanel treats .app packages as selectable files. Resolve only
+            // known CLI locations; never launch the desktop GUI as a stdio server.
+            if custom.lowercased().hasSuffix(".app") {
+                let bundle = URL(fileURLWithPath: custom)
+                let candidates = ["Contents/Resources/codex",
+                                  "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+                                  "Contents/MacOS/codex"].map { bundle.appendingPathComponent($0).path }
+                guard let found = candidates.first(where: executableFile) else { throw CodexFailure.missingCLI }
+                return found
+            }
+            guard executableFile(custom) else { throw CodexFailure.missingCLI }
             return custom
         }
         let known = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex",
                      "/Applications/Codex.app/Contents/Resources/codex",
                      "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"]
         let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/codex" }
-        guard let found = (paths + known).first(where: { fm.isExecutableFile(atPath: $0) }) else { throw CodexFailure.missingCLI }
+        guard let found = (paths + known).first(where: executableFile) else { throw CodexFailure.missingCLI }
         return found
     }
 
