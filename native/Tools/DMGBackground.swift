@@ -16,7 +16,7 @@ arrow.lineWidth=4; arrow.lineCapStyle = .round; arrow.lineJoinStyle = .round
 NSColor(srgbRed:0.27,green:0.48,blue:0.77,alpha:1).setStroke(); arrow.stroke()
 NSColor(srgbRed:0.85,green:0.89,blue:0.94,alpha:1).setFill(); NSRect(x:48,y:95,width:624,height:1).fill()
 text("拖动完成后，可以推出此安装磁盘。",x:48,y:65,size:12,weight:.regular,color:ink.withAlphaComponent(0.65))
-text("CodexUsageBar 0.1.4    ·    Apple Silicon    ·    macOS 14 或更高版本",x:48,y:35,size:10,weight:.regular,color:ink.withAlphaComponent(0.45))
+text("CodexUsageBar 0.1.5    ·    Apple Silicon    ·    macOS 14 或更高版本",x:48,y:35,size:10,weight:.regular,color:ink.withAlphaComponent(0.45))
 NSGraphicsContext.restoreGraphicsState()
 let png = bitmap.representation(using:.png,properties:[:])!
 try png.write(to:URL(fileURLWithPath:output))

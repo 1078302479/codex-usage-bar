@@ -84,7 +84,7 @@ No Intel binary is provided and Intel hardware has not been validated. API-key-o
 
 ## Install
 
-1. Download `CodexUsageBar-0.1.4-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
+1. Download `CodexUsageBar-0.1.5-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
 2. Open the DMG and drag **CodexUsageBar** into **Applications**.
 3. Eject the installation disk and launch the app from Applications.
 4. Optionally enable **Settings → Appearance & About → Launch at login**. The current UI is in Chinese.

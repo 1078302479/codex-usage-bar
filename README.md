@@ -88,7 +88,7 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 
 ## 安装
 
-1. 在 [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest) 下载 `CodexUsageBar-0.1.4-mac-arm64.dmg`。
+1. 在 [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest) 下载 `CodexUsageBar-0.1.5-mac-arm64.dmg`。
 2. 双击 DMG，将 **CodexUsageBar** 拖到右侧 **Applications（应用程序）** 文件夹。
 3. 推出安装磁盘，从“应用程序”打开应用。
 4. 需要自启动时，进入 **设置 → 外观与关于 → 登录时自动启动**。

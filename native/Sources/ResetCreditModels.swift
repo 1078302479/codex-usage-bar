@@ -67,7 +67,9 @@ struct ResetCreditSummary: Codable, Equatable, Sendable {
         let remaining = expiry.timeIntervalSince(now)
         guard remaining > 0 else { return "已到期" }
         let minutes = Int(ceil(remaining / 60))
-        return "\(minutes / 60) 小时 : \(String(format: "%02d", minutes % 60)) 分后到期"
+        let days = minutes / (24 * 60)
+        let hours = (minutes / 60) % 24
+        return "\(days) 天 \(hours) 小时 \(minutes % 60) 分钟后到期"
     }
 }
 
