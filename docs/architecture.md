@@ -35,6 +35,10 @@ This is a local observation strategy, not a guarantee of matching an undocumente
 
 AppState owns one refresh chain, one coalesced event task, and at most one retry task. Recoverable failures use 5/15/30/60/120/300-second backoff. Automatic events, polling, and panel opening do not bypass a pending retry or a user-action error; explicit refresh can retry immediately. Event-following mode has a quota-only fallback; sleep pauses it and retry backoff still takes precedence. NWPathMonitor is only a hint to expedite a retry after an offline-to-online transition; it does not prove service availability.
 
+手动刷新会清除旧账号展示并重建 App Server 连接，以读取其他 Codex 进程切换后的登录状态。收到需要登录错误后，定时核验可在至少 60 秒冷却后重建连接尝试恢复；不会发起登录、复制凭证或循环打开浏览器。其他需要用户处理的错误仍停止自动重试。
+
+Explicit refresh clears old account presentation and recreates the App Server connection to reload authentication changed by another Codex process. Authentication failures are the exception to the user-action retry rule: polling may recreate the connection after a minimum 60-second cooldown. It never starts a login flow, copies credentials, or opens a browser. Other user-action failures remain blocked until explicit action.
+
 Sleep, stop, and CLI configuration changes advance a connection epoch and invalidate old request ownership. New requests wait for prior shutdown tasks. Account notifications advance a separate identity epoch: in-flight data is discarded and revalidated on the same connection. Initialization also emits account notifications, so they must not trigger a connection restart. The client also checks its process generation after asynchronous RPC boundaries, so old continuations cannot mutate or shut down a replacement connection. Sleep cancels retries and timers; duplicate wake callbacks coalesce into one delayed validation.
 
 状态区与菜单栏提示区分已核验、过期、重置待确认、查询中、网络请求失败、超时、连接断开、需要登录、版本不兼容、程序/权限问题及无额度。最近成功时间只来自成功的查询；启动缓存不能伪装为本次成功核验。失败消息不展示原始服务端错误或凭证。Token 活动不支持时只影响活动区，保持额度功能可用。

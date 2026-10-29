@@ -71,6 +71,7 @@ final class AppState: ObservableObject {
     private var configurationEpoch = 0
     private var accountEpoch = 0
     private var retryAttempt = 0
+    private var authRecoveryAfter: Date?
     private var resetKey = ""
     private var resetAttempts = 0
     private var started = false
@@ -200,7 +201,17 @@ final class AppState: ObservableObject {
         configurePolling()
     }
 
-    func pollQuota() {
+    func pollQuota(at date: Date = Date()) {
+        // Login can change in another Codex process without notifying this one.
+        // Recreate only the failed auth session, at most once per minute.
+        if lastFailure == .authRequired, !paused, !isRefreshing,
+           let after = authRecoveryAfter, date >= after {
+            invalidateConnection()
+            lastFailure = nil
+            authRecoveryAfter = nil
+            refresh(reason: "重新读取登录状态")
+            return
+        }
         refresh(reason: preferences.refreshMode == .followClient ? "兜底额度核验" : "定时核验")
     }
 
@@ -211,6 +222,13 @@ final class AppState: ObservableObject {
         if isRefreshing {
             if manual || queuedReason == nil { queuedReason = reason }
             return
+        }
+        if manual {
+            // A different CLI/desktop process may have switched accounts. Do not
+            // retry against the old app-server's in-memory authentication.
+            invalidateConnection()
+            clearAccount()
+            authRecoveryAfter = nil
         }
         scheduledRefresh?.cancel(); scheduledRefresh = nil
         if manual { cancelRetry(); retryAttempt = 0 }
@@ -237,7 +255,7 @@ final class AppState: ObservableObject {
                 guard isCurrent(request, epoch: epoch) else { return }
                 guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil }
-                snapshot = result; verified = true; lastFailure = nil; lastSuccessfulAt = result.observedAt; now = Date()
+                snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 reminders.update(snapshot: result, verified: true)
                 configureCreditCheck()
                 cancelRetry()
@@ -293,6 +311,7 @@ final class AppState: ObservableObject {
 
     private func recordFailure(_ failure: CodexFailure, invalidateQuota: Bool = true) {
         lastFailure = failure; now = Date()
+        authRecoveryAfter = failure == .authRequired ? Date().addingTimeInterval(60) : nil
         if invalidateQuota { verified = false; reminders.update(snapshot: nil, verified: false) }
         resetTimer?.invalidate(); resetTimer = nil
         scheduledRefresh?.cancel(); scheduledRefresh = nil

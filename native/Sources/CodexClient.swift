@@ -203,7 +203,9 @@ actor CodexClient: QuotaClient {
                     resolve(id, result: .success(raw))
                 } else { resolve(id, result: .failure(CodexFailure.invalidResponse)) }
             } else if let method = value["method"] as? String {
-                if method == "account/updated" { handler?(.accountChanged) }
+                // Startup announces the initial account too. fetch() validates it
+                // before/after the quota read; this is not an external switch.
+                if method == "account/updated", ready { handler?(.accountChanged) }
                 if method == "account/rateLimits/updated", let params = value["params"] as? [String: Any],
                    let rate = params["rateLimits"] as? [String: Any],
                    let raw = try? JSONSerialization.data(withJSONObject: rate, options: [.sortedKeys]) {

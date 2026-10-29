@@ -10,6 +10,7 @@ private actor TestQuotaClient: QuotaClient {
     private(set) var active = 0
     private(set) var maximumActive = 0
     private(set) var usageCalls = 0
+    private(set) var shutdownCalls = 0
     private var usageFailure: CodexFailure?
     init(_ replies: [Reply], usageFailure: CodexFailure? = nil) { self.replies = replies; self.usageFailure = usageFailure }
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) { handler = value }
@@ -28,7 +29,7 @@ private actor TestQuotaClient: QuotaClient {
         if let usageFailure { throw usageFailure }
         return TokenActivity(summary: nil, dailyUsageBuckets: nil)
     }
-    func shutdown() {}
+    func shutdown() { shutdownCalls += 1 }
     func emit(_ signal: CodexSignal) { handler?(signal) }
     func append(_ reply: Reply) { replies.append(reply) }
     func release(_ snapshot: QuotaSnapshot) { held?.resume(returning: snapshot); held = nil }
@@ -46,6 +47,7 @@ private actor TestQuotaClient: QuotaClient {
         try await sleepAndLateResults()
         try await sleepCancelsRetry()
         try await sourceChange()
+        try await externalAccountSwitch()
         try await presentationAndActivity()
         try await missedResetCreditEvent()
         if CommandLine.arguments.contains("--transport") { try await realTransport() }
@@ -268,6 +270,30 @@ private actor TestQuotaClient: QuotaClient {
         print("PASS: initialization account notifications preserve the connection and reject old account results")
     }
 
+    @MainActor static func externalAccountSwitch() async throws {
+        let client = TestQuotaClient([.value(snapshot("old")), .fail(.authRequired), .value(snapshot("new")), .fail(.authRequired), .value(snapshot("third"))])
+        let (state, defaults, suite) = makeState(client)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        state.refresh(reason: "启动核验")
+        try await eventually("old account loaded") { state.verified && !state.isRefreshing }
+        state.refresh()
+        try await eventually("stale auth rejected") { state.lastFailure == .authRequired && !state.isRefreshing }
+        require(state.snapshot == nil && !state.verified && state.tokenActivity == nil, "Do not expose old account data after failed identity validation")
+        let calls = await client.calls
+        for _ in 0..<10 { state.pollQuota() }
+        require(await client.calls == calls, "Auth probes must respect their cooldown")
+        state.refresh()
+        try await eventually("new account loaded") { state.verified && !state.isRefreshing && state.snapshot?.accountScope == "new" }
+        require(await client.shutdownCalls == 2, "Every manual refresh recreates the authentication session")
+        await client.emit(.accountChanged)
+        try await eventually("second auth failure") { state.lastFailure == .authRequired && !state.isRefreshing }
+        state.pollQuota(at: Date().addingTimeInterval(61))
+        try await eventually("external login automatically recovered") { state.verified && !state.isRefreshing && state.snapshot?.accountScope == "third" }
+        require(await client.shutdownCalls == 3, "Periodic auth recovery must discard the old session")
+        await state.stop()
+        print("PASS: external account switch, manual auth reconnect, stale data removal and auth probe throttling")
+    }
+
     @MainActor static func sourceChange() async throws {
         let client = TestQuotaClient([.held, .value(snapshot("new-source"))])
         let (state, defaults, suite) = makeState(client)
@@ -333,6 +359,7 @@ private actor TestQuotaClient: QuotaClient {
 import os, sys, json, pathlib, time
 root = pathlib.Path(__file__).parent
 (root / 'pid').write_text(str(os.getpid()))
+account = (root / 'account').read_text() if (root / 'account').exists() else 'fixture'
 for line in sys.stdin:
     m = json.loads(line)
     if 'id' not in m: continue
@@ -348,7 +375,7 @@ for line in sys.stdin:
     if method == 'initialize':
         print(json.dumps({'method': 'account/updated', 'params': {'planType': 'plus'}}), flush=True)
         result = {'userAgent': 'fixture'}
-    elif method == 'account/read': result = {'account': {'type': 'chatgpt', 'id': 'fixture', 'planType': 'plus'}}
+    elif method == 'account/read': result = {'account': {'type': 'chatgpt', 'id': account, 'planType': 'plus'}}
     elif method == 'account/rateLimits/read': result = {'rateLimits': {'limitId': 'codex', 'primary': {'usedPercent': 10, 'windowDurationMins': 300, 'resetsAt': time.time()+3600}}}
     else: result = {'summary': None, 'dailyUsageBuckets': None}
     print(json.dumps({'id': m['id'], 'result': result}), flush=True)
@@ -362,6 +389,12 @@ for line in sys.stdin:
         try await eventually("real RPC network failure", timeout: 5) { state.lastFailure == .networkUnavailable && !state.isRefreshing }
         try "ok".write(to: mode, atomically: true, encoding: .utf8)
         try await eventually("real RPC recovery", timeout: 5) { state.verified && !state.isRefreshing }
+        let oldScope = state.snapshot?.accountScope
+        try "switched-account".write(to: root.appendingPathComponent("account"), atomically: true, encoding: .utf8)
+        state.refresh()
+        try await eventually("real external account switch", timeout: 5) {
+            state.verified && !state.isRefreshing && state.snapshot?.accountScope != oldScope
+        }
         let oldPID = Int32(try String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines))!
         require(Darwin.kill(oldPID, SIGTERM) == 0, "Terminate only the fixture child")
         try await eventually("real child replacement", timeout: 5) {
