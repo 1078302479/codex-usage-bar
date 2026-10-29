@@ -122,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func showPopover() {
+        settingsWindow?.close()
         NSApp.activate(ignoringOtherApps: true)
         if let panelWindow {
             state.setPanelVisible(true)
@@ -142,6 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func showPanelWindow() {
+        settingsWindow?.close()
+        closePopoverImmediately()
         if let panelWindow { panelWindow.makeKeyAndOrderFront(nil); return }
         popover.contentViewController = nil
         let host = NSHostingController(rootView: QuotaPanelView(state: state, openSettings: { [weak self] in self?.openSettings() }))
@@ -203,8 +206,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         popover.contentSize = size
     }
     @objc private func refreshQuota() { state.refreshAllAccounts() }
-    @objc func openSettings() {
+    private func closePopoverImmediately() {
+        let animates = popover.animates
+        popover.animates = false
         popover.performClose(nil)
+        popover.animates = animates
+    }
+
+    @objc func openSettings() {
+        closePopoverImmediately()
+        panelWindow?.close()
         if settingsWindow == nil {
             let host = NSHostingController(rootView: UsageSettingsView(state: state))
             let window = NSWindow(contentViewController: host)

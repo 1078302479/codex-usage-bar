@@ -6,6 +6,7 @@ import Foundation
         try recentLogs()
         if CommandLine.arguments.contains("--ui") { presentationLifecycle() }
         if CommandLine.arguments.contains("--window") { fallbackWindowLifecycle() }
+        if CommandLine.arguments.contains("--exclusive") { exclusivePresentation() }
     }
 
     static func recentLogs() throws {
@@ -72,6 +73,38 @@ import Foundation
             precondition(state.preferences == original, "Fallback preserves user settings")
         }
         print("PASS: fallback window visibility, reuse, appearance sync, close/release and preserved preferences")
+    }
+
+    @MainActor static func exclusivePresentation() {
+        _ = NSApplication.shared
+        let suite = "usagebar-exclusive-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(defaults: defaults)
+        state.isRefreshing = true // No live account/network queries in this test.
+        let delegate = AppDelegate(state: state)
+        delegate.configurePresentation()
+        delegate.popover.animates = false
+        for _ in 0..<5 {
+            delegate.openSettings()
+            precondition(delegate.settingsWindow?.isVisible == true)
+            delegate.showPopover()
+            settle()
+            precondition(delegate.settingsWindow == nil, "Opening the menu panel must close settings")
+            precondition(delegate.popover.isShown || delegate.panelWindow?.isVisible == true)
+            precondition(state.panelVisible)
+            delegate.openSettings()
+            settle()
+            precondition(!delegate.popover.isShown && delegate.panelWindow == nil, "Settings must close both quota hosts")
+            precondition(!state.panelVisible && delegate.settingsWindow?.isVisible == true)
+            delegate.showPanelWindow()
+            precondition(delegate.settingsWindow == nil && delegate.panelWindow?.isVisible == true)
+            delegate.openSettings()
+            precondition(delegate.panelWindow == nil && delegate.settingsWindow?.isVisible == true)
+        }
+        delegate.settingsWindow?.close()
+        precondition(delegate.settingsWindow == nil && !state.panelVisible)
+        print("PASS: settings, status popover and fallback window are mutually exclusive across repeated transitions")
     }
 
     @MainActor static func presentationLifecycle() {
