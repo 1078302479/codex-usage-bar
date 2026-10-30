@@ -16,6 +16,10 @@ This is an independent community project, not an official OpenAI application or 
 
 ## Features
 
+- Monitor two accounts concurrently; selecting a row updates the menu bar, reset credits and Token activity.
+- One-click alternate-account switching with a client restart, preserving the workspace and conversation list. The active account is listed first; disabling secondary monitoring hides switching.
+- Online update checks at startup and every eight hours, with a new-release entry in the popup and manual checks in settings. Click to open the GitHub release download page.
+
 - Remaining allowance and reset times for independent short-term and weekly windows; actual durations come from the service.
 - Independent remaining-percentage color ranges for short- and long-term menu-bar quotas, including stacked mode. Default text colors remain unchanged.
 - Circular quota gauges, a compact account/subscription header and refreshed light/dark activity views.
@@ -102,6 +106,14 @@ The app discovers Codex automatically. If discovery fails, select the executable
 The app does not directly read authentication files, persist tokens, or start model inference. Codex owns authentication and network requests. Display preferences and a masked quota cache are stored locally; cached quota is revalidated after every launch. Account token activity is kept in memory only.
 
 ## Data and refresh behavior
+
+### Online software updates
+
+Open **Settings → Connection & Refresh → Software Update** to see the installed version and last check, or check manually. The app checks at startup and every eight hours, catching up after wake. Only stable public releases are considered; drafts and prereleases are excluded.
+
+When a newer version is available, the popup shows a download entry that opens this project's GitHub release page. Download the DMG and replace the app in Applications. Nothing is downloaded, installed or restarted automatically. Failed checks can be retried manually and resume on the next interval. Only public release metadata is requested; no GitHub token or Codex account information is sent.
+
+Online update checking is available in development source and the local build; the published v0.1.6 installer does not yet include it.
 
 ### Two-account monitoring (v0.1.6)
 

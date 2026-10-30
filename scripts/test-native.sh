@@ -35,3 +35,6 @@ fi
 
 xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/SharedWorkspaceTests.swift" -o "$ROOT/.build/SharedWorkspaceTests"
 "$ROOT/.build/SharedWorkspaceTests"
+
+xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/AppUpdateController.swift" "$ROOT/native/Tests/AppUpdateTests.swift" -o "$ROOT/.build/AppUpdateTests"
+"$ROOT/.build/AppUpdateTests"

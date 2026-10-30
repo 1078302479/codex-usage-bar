@@ -6,6 +6,7 @@ enum SettingsTab: Hashable { case menuBar, connection, reminders, appearance }
 
 @MainActor
 final class AppState: ObservableObject {
+    let appUpdates = AppUpdateController()
     let loginItem = LoginItemController()
     lazy var dualClient: DualClientController = {
         let controller = DualClientController(defaults: defaults)

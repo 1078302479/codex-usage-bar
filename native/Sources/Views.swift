@@ -10,6 +10,7 @@ struct QuotaPanelView: View {
         VStack(spacing: 0) {
             panelHeader
             Divider()
+            AppUpdateBanner(updates: state.appUpdates)
             panelScroll
             Divider()
             panelFooter
@@ -265,6 +266,7 @@ struct UsageSettingsView: View {
             }.formStyle(.grouped).tabItem { Label("菜单栏", systemImage: "menubar.rectangle") }.tag(SettingsTab.menuBar)
 
             Form {
+                AppUpdateSettings(updates: state.appUpdates)
                 Section("额度更新") {
                     Picker("更新方式", selection: bind(\.refreshMode)) {
                         ForEach(RefreshMode.allCases, id: \.self) { Text($0.title).tag($0) }

@@ -44,12 +44,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         UNUserNotificationCenter.current().delegate = self
         configurePresentation()
         state.start()
+        state.appUpdates.start()
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.state.pause() }
         })
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.state.resume() }
+            Task { @MainActor in self?.state.resume(); self?.state.appUpdates.checkIfDue() }
         })
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showPopover() }
     }
@@ -240,6 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
+        state.appUpdates.stop()
         for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     }
 }
