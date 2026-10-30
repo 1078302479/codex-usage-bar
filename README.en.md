@@ -113,7 +113,7 @@ Open **Settings → Connection & Refresh → Software Update** to see the instal
 
 When a newer version is available, the popup shows a download entry that opens this project's GitHub release page. Download the DMG and replace the app in Applications. Nothing is downloaded, installed or restarted automatically. Failed checks can be retried manually and resume on the next interval. Only public release metadata is requested; no GitHub token or Codex account information is sent.
 
-Online update checking is available in development source and the local build; the published v0.1.6 installer does not yet include it.
+Online update checking is included in the refreshed v0.1.6 installer (build 11). If you downloaded v0.1.6 earlier, download it again and replace the installed app.
 
 ### Two-account monitoring (v0.1.6)
 
