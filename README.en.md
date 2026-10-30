@@ -39,43 +39,55 @@ Background resources: settings windows are released on close, and the quota pane
 
 ## Screenshots
 
-Captured from **v0.1.1** running on the maintainer's Mac on 2026-10-21. Account information has been covered. Quota and token values reflect only the account state at capture time. The current UI is Chinese.
+Actual **v0.1.6** screenshots captured on the maintainer’s Mac on **2026-10-30**. Account details are redacted and some images are cropped. Values reflect the capture time; the application UI is Chinese.
 
-### Actual menu bar appearance
+### Single and dual accounts
 
-The native menu bar shows two stacked rows: **weekly remaining allowance and reset date** above **5-hour remaining allowance and reset time**, with the Codex icon on the left. Click to open the quota panel. Displayed metrics, labels, and separators are configurable.
-
-<img src="docs/images/screenshots/menubar-live.png" width="440" alt="Actual macOS menu bar: 7d 75% / 10-27 above 5h 98% / 18:52, with the CodexUsageBar panel open and account covered">
-
-### Quota panel and token activity
-
-Click the menu bar item to see remaining allowance, reset times, and validation status for two independent windows. The panel also shows lifetime tokens, peak daily usage, activity streaks, and six months of daily activity. Hover over or click a heatmap date to inspect details.
+Single-account gauges and compact dual-account quota/reset rows. Selecting a row updates menu bar quota and details; the execution account is listed first.
 
 <table>
-  <tr><th>Full quota panel</th><th>Token activity and date tooltip (crop)</th></tr>
+  <tr><th>Single-account panel</th><th>Dual-account overview</th></tr>
   <tr>
-    <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="Actual quota panel with short-term and weekly allowance, resets, token summaries, and heatmap"></td>
-    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Token summaries and daily heatmap with a tooltip showing 2026-10-14 and 219,779,583 Token"></td>
+    <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="v0.1.6 single-account quota gauges, reset credits and Token activity"></td>
+    <td valign="top"><img src="docs/images/screenshots/dual-account.png" width="420" alt="v0.1.6 dual-account quota comparison, account switching and activity; emails redacted"></td>
   </tr>
 </table>
 
-### Menu bar customization and refresh
+### One-click execution account switching
 
-Choose which quota and reset values appear, enable stacked rows, and configure labels and separators. Refresh follows local Codex changes and validates against the service by default. Connection settings show update status and let you select the local Codex executable.
+Switch to the alternate account with a client restart while retaining the workspace and conversation list. Finish tasks and save work first. Viewing quotas does not switch execution identity.
+
+<img src="docs/images/screenshots/account-switch.png" width="680" alt="Alternate-account switch-and-restart action; email redacted">
+
+### Token activity and reset credits
+
+Official totals, peak daily usage, streaks, longest turn and a 26-week activity heatmap. Hover or click a date for details. The dual-account screenshot also shows reset-credit availability and expiry.
+
+<img src="docs/images/screenshots/token-activity.png" width="620" alt="Current official Token statistics and 26-week activity heatmap, cropped">
+
+### Menu bar customization and online updates
+
+Customize stacked rows, quotas, reset times, labels, separators and percentage colors. Check stable GitHub updates automatically every eight hours or manually.
 
 <table>
-  <tr><th>Menu bar contents and layout</th><th>Connection and refresh</th></tr>
+  <tr><th>Menu bar settings</th><th>Updates and quota validation</th></tr>
   <tr>
-    <td valign="top"><img src="docs/images/screenshots/menubar-settings.png" width="480" alt="Menu bar settings for metrics, stacked weekly and short-term rows, labels, and separators"></td>
-    <td valign="top"><img src="docs/images/screenshots/connection.png" width="480" alt="Client-following refresh, validation status, plan, and executable settings; account covered"></td>
+    <td valign="top"><img src="docs/images/screenshots/menubar-settings.png" width="460" alt="v0.1.6 menu bar metrics, stacked rows, labels and separator settings"></td>
+    <td valign="top"><img src="docs/images/screenshots/connection.png" width="460" alt="v0.1.6 online software update checks and quota validation settings"></td>
   </tr>
 </table>
 
-### Appearance and launch at login
+### Account management and appearance
 
-Choose light, dark, or system appearance and optionally launch at login. This Mac currently uses system appearance, with launch at login disabled.
+Authorize a second account through the official login page; stopping monitoring retains its login. Light, dark and system appearance are supported. The appearance screenshot is a cropped settings view.
 
-<img src="docs/images/screenshots/appearance.png" width="640" alt="Appearance settings showing launch at login, system theme, and app version">
+<table>
+  <tr><th>Connection and accounts</th><th>Appearance and version</th></tr>
+  <tr>
+    <td valign="top"><img src="docs/images/screenshots/accounts-settings.png" width="460" alt="Codex path, second-account monitoring and login; emails redacted"></td>
+    <td valign="top"><img src="docs/images/screenshots/appearance.png" width="460" alt="System theme and v0.1.6 version information"></td>
+  </tr>
+</table>
 
 ## Requirements
 

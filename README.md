@@ -40,46 +40,55 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 
 ## 界面预览
 
-以下为维护者在 macOS 上运行 **v0.1.1** 的实际截图（2026-10-21），账号信息已遮盖。额度和 Token 数值仅代表截图时的账号状态；界面当前为中文。
+以下为 **v0.1.6** 在维护者 Mac 上的实际截图（2026-10-30），账号信息已遮盖，部分图片经过裁切。额度与 Token 数仅代表拍摄时的状态；当前界面为中文。
 
-### 菜单栏实际效果
+### 单账号与双账号
 
-原生菜单栏双行显示：上方为 **7 天剩余与重置日期**，下方为 **5 小时剩余与重置时间**，左侧为 Codex 图标。点击后展开额度面板；显示内容、标签和分隔符均可在设置中调整。
-
-<img src="docs/images/screenshots/menubar-live.png" width="440" alt="macOS 菜单栏实际双行效果：上方 7d 75% / 10-27，下方 5h 98% / 18:52，点击展开 CodexUsageBar 面板；账号已遮盖">
-
-### 额度面板与 Token 活动
-
-点击菜单栏即可查看两个独立窗口的剩余额度、重置时间及核验状态；下方展示累计 Token、单日峰值、连续活跃天数与近半年每日活动。热力图支持悬停或点击日期查看详情。
+单账号使用环形额度面板；双账号以紧凑对比行展示两个账号的 5 小时、7 天额度和重置时间。点击账号行同步切换菜单栏与下方详情，当前执行账号置顶。
 
 <table>
+  <tr><th>单账号额度面板</th><th>双账号总览与账号切换</th></tr>
   <tr>
-    <th>完整额度面板</th>
-    <th>Token 统计与热力图日期提示（局部）</th>
-  </tr>
-  <tr>
-    <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="CodexUsageBar 实际额度面板：5 小时与 7 天剩余额度、重置时间、Token 统计和热力图"></td>
-    <td valign="top"><img src="docs/images/screenshots/token-activity.png" width="460" alt="Token 统计与活动热力图，日期提示框显示 2026-10-14 和 219,779,583 Token"></td>
+    <td valign="top"><img src="docs/images/screenshots/quota-panel.png" width="360" alt="v0.1.6 单账号环形额度、重置卡与 Token 活动"></td>
+    <td valign="top"><img src="docs/images/screenshots/dual-account.png" width="420" alt="v0.1.6 双账号额度对比、备用账号切换与统计；邮箱已遮盖"></td>
   </tr>
 </table>
 
-### 菜单栏定制与更新方式
+### 一键切换执行账号
 
-选择展示哪些额度和重置时间、启用上下堆叠、调整标签与分隔符。默认跟随 Codex 客户端变化并向服务商核验；可在连接设置中查看更新状态和选择本机 Codex。
+点击“切换并重启”可切到备用账号，保留同一工作区和会话列表。请先保存内容、结束任务。查看账号额度与执行换号是分开的操作。
+
+<img src="docs/images/screenshots/account-switch.png" width="680" alt="备用账号及单按钮切换并重启操作，邮箱已遮盖">
+
+### Token 活动与重置卡
+
+显示累计 Token、单日峰值、连续活跃天数、最长单轮及近 26 周每日活动。热力图支持悬停或点击查看日期明细。双账号截图中还展示了可用重置卡与到期倒计时。
+
+<img src="docs/images/screenshots/token-activity.png" width="620" alt="最新 Token 统计与近 26 周活动热力图局部">
+
+### 菜单栏定制与在线更新
+
+菜单栏支持双行堆叠、额度与重置时间、标签、分隔符和百分比颜色。软件更新每 8 小时检查 GitHub 正式版本，也可手动检查。
 
 <table>
-  <tr><th>菜单栏显示与排列</th><th>连接与更新</th></tr>
+  <tr><th>菜单栏显示与排列</th><th>在线更新与额度核验</th></tr>
   <tr>
-    <td valign="top"><img src="docs/images/screenshots/menubar-settings.png" width="480" alt="菜单栏设置：显示内容、7 天与 5 小时堆叠、标签、重置描述和分隔符"></td>
-    <td valign="top"><img src="docs/images/screenshots/connection.png" width="480" alt="连接与更新设置：跟随客户端、核验状态、账号套餐及 Codex 路径；账号已遮盖"></td>
+    <td valign="top"><img src="docs/images/screenshots/menubar-settings.png" width="460" alt="v0.1.6 菜单栏显示内容、堆叠、标签和分隔符设置"></td>
+    <td valign="top"><img src="docs/images/screenshots/connection.png" width="460" alt="v0.1.6 软件在线更新、手动检查与额度核验设置"></td>
   </tr>
 </table>
 
-### 外观与登录时启动
+### 双账号管理与外观
 
-支持浅色、深色和跟随系统主题，并提供登录时自动启动开关。截图展示当前电脑的“跟随系统”配置，自启动开关当前为关闭状态。
+第二账号通过官方网页登录独立授权；可停止监测并保留登录。外观支持浅色、深色和跟随系统。以下外观截图为设置页局部。
 
-<img src="docs/images/screenshots/appearance.png" width="640" alt="外观与关于设置：登录时自动启动开关、跟随系统主题及版本信息">
+<table>
+  <tr><th>连接与双账号管理</th><th>外观与版本信息</th></tr>
+  <tr>
+    <td valign="top"><img src="docs/images/screenshots/accounts-settings.png" width="460" alt="本机 Codex 路径、第二账号监测与重新登录，邮箱已遮盖"></td>
+    <td valign="top"><img src="docs/images/screenshots/appearance.png" width="460" alt="跟随系统主题与 v0.1.6 版本信息"></td>
+  </tr>
+</table>
 
 ## 系统要求
 
