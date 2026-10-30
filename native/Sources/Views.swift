@@ -43,7 +43,7 @@ struct QuotaPanelView: View {
     private var panelContent: some View {
         VStack(spacing: 0) {
             if let second = state.secondAccount {
-                DualAccountPanelView(primary: state, secondary: second, openSettings: openSettings)
+                DualAccountPanelView(primary: state, secondary: second, controller: state.dualClient, openSettings: openSettings)
             } else {
                 accountHeader
                 quotaSection

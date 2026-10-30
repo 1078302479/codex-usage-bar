@@ -77,18 +77,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
                                    lines: state.preferences.isStacked ? lines : [],
                                    showIcon: state.preferences.showIcon, appearance: state.preferences.appearance, colors: colors)
         if state.preferences.isStacked {
-            button.title = ""
             if menuImageKey != imageKey {
                 button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: state.preferences.showIcon, colors: colors)
             }
             button.imagePosition = .imageOnly
+            // Install the replacement artwork before removing the old title.
+            // An empty variable-length item can otherwise collapse during layout.
+            if !button.title.isEmpty { button.title = "" }
         } else {
-            button.title = displayed.menuTitle
-            button.attributedTitle = MenuBarRenderer.title(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
+            let title = MenuBarRenderer.title(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
+            if !button.attributedTitle.isEqual(to: title) { button.attributedTitle = title }
             if state.preferences.showIcon {
                 if menuImageKey != imageKey { button.image = ProviderIcon.codex() }
                 button.imagePosition = .imageLeading
-            } else { button.image = nil }
+            } else {
+                // Restore text rendering when leaving the stacked image layout.
+                button.imagePosition = .noImage
+                button.image = nil
+            }
         }
         menuImageKey = imageKey
         button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : (state.showingSecondAccountDetails ? "CodexUsageBar · 账号 B" : "CodexUsageBar · 账号 A"), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,

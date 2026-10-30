@@ -46,6 +46,17 @@ actor CodexClient: QuotaClient {
         self.codexHome = codexHome
     }
 
+    static func primaryHome(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        let base = FileManager.default.homeDirectoryForCurrentUser
+        let standard = base.appendingPathComponent(".codex")
+        guard let value = environment["CODEX_HOME"], !value.isEmpty else { return standard }
+        let candidate = URL(fileURLWithPath: value).standardizedFileURL
+        let managed = base.appendingPathComponent("Library/Application Support/CodexUsageBar/accounts").standardizedFileURL.path
+        // A must never inherit one of our isolated account homes from a B desktop.
+        if candidate.path == managed || candidate.path.hasPrefix(managed + "/") { return standard }
+        return candidate
+    }
+
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) { handler = value }
 
     func beginLogin(customPath: String) async throws -> URL {
@@ -165,8 +176,8 @@ actor CodexClient: QuotaClient {
         task.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         var env = ProcessInfo.processInfo.environment
-        if let codexHome {
-            env["CODEX_HOME"] = codexHome.path
+        env["CODEX_HOME"] = (codexHome ?? Self.primaryHome()).path
+        if codexHome != nil {
             for name in ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"] { env.removeValue(forKey: name) }
         }
         env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\(home)/.npm-global/bin"

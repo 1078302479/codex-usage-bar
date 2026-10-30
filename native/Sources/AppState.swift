@@ -7,6 +7,15 @@ enum SettingsTab: Hashable { case menuBar, connection, reminders, appearance }
 @MainActor
 final class AppState: ObservableObject {
     let loginItem = LoginItemController()
+    lazy var dualClient: DualClientController = {
+        let controller = DualClientController(defaults: defaults)
+        controller.onRestartSucceeded = { [weak self] secondary in
+            guard let self else { return }
+            self.showingSecondAccountDetails = secondary && self.secondAccount != nil
+            self.displayedAccount.panelOpened()
+        }
+        return controller
+    }()
     let reminders: ResetCreditReminderController
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
@@ -47,6 +56,7 @@ final class AppState: ObservableObject {
     @Published var tokenActivity: TokenActivity?
     @Published var activityError: String?
     @Published var activityUpdatedAt: Date?
+    private var activityAttemptAt: Date?
     @Published var snapshot: QuotaSnapshot?
     @Published var verified = false
     @Published var isRefreshing = false
@@ -116,6 +126,7 @@ final class AppState: ObservableObject {
             secondary.preferences = preferences
             secondary.onDisplayChange = { [weak self] in self?.onDisplayChange?() }
             secondAccount = secondary
+            showingSecondAccountDetails = dualClient.activeSecondary
             if started { secondary.start() }
             secondary.setPanelVisible(panelVisible)
         } else if !enabled, let secondary = secondAccount {
@@ -234,7 +245,7 @@ final class AppState: ObservableObject {
         guard !started else { return }
         started = true; paused = false
         reminders.start()
-        let home = codexHome ?? ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+        let home = codexHome ?? CodexClient.primaryHome()
         let monitor = ClientLogMonitor(root: home.appendingPathComponent("sessions")) { [weak self] date in
             Task { @MainActor in
                 guard let self else { return }
@@ -301,8 +312,10 @@ final class AppState: ObservableObject {
     }
 
     func panelOpened() {
+        if codexHome == nil { dualClient.detectRunningAccount() }
+        secondAccount?.panelOpened()
         guard !isRefreshing, lastFailure?.canRetry != false, nextRetryAt == nil else { return }
-        if !verified || snapshot.map({ Date().timeIntervalSince($0.observedAt) > 2 }) != false { refresh(reason: "打开面板核验") }
+        if !verified || snapshot.map({ Date().timeIntervalSince($0.observedAt) > 2 }) != false || activityAttemptAt.map({ Date().timeIntervalSince($0) >= 300 }) != false { refresh(reason: "打开面板核验") }
     }
 
     func setPanelVisible(_ visible: Bool) {
@@ -365,7 +378,7 @@ final class AppState: ObservableObject {
                 let result = try await client.fetch(customPath: custom)
                 guard isCurrent(request, epoch: epoch) else { return }
                 guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
-                if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil }
+                if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; activityAttemptAt = nil }
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 if codexHome != nil { loginMessage = "账号 B 已核验。" }
                 reminders.update(snapshot: result, verified: true)
@@ -373,8 +386,9 @@ final class AppState: ObservableObject {
                 cancelRetry()
                 if result.accountScope != nil, let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: "quota-cache.v1") }
                 configureResetCheck()
-                if reason != "兜底额度核验", let scope = result.accountScope,
-                   manual || activityUpdatedAt.map({ Date().timeIntervalSince($0) >= 300 }) != false {
+                if (reason != "兜底额度核验" || panelVisible), let scope = result.accountScope,
+                   manual || activityAttemptAt.map({ Date().timeIntervalSince($0) >= 300 }) != false {
+                    activityAttemptAt = Date()
                     do {
                         try Task.checkCancellation()
                         let activity = try await client.fetchUsage(expectedScope: scope)
@@ -451,6 +465,7 @@ final class AppState: ObservableObject {
     }
 
     private func clearAccount() {
+        activityAttemptAt = nil
         verified = false; snapshot = nil; tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; lastSuccessfulAt = nil
         defaults.removeObject(forKey: "quota-cache.v1")
         reminders.update(snapshot: nil, verified: false)

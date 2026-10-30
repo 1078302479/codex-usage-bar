@@ -50,6 +50,7 @@ private actor TestQuotaClient: QuotaClient {
         try await externalAccountSwitch()
         try await presentationAndActivity()
         try await missedResetCreditEvent()
+        try await missingActivityRecovery()
         if CommandLine.arguments.contains("--transport") { try await realTransport() }
         print("PASS: recovery coordinator and update-state regressions")
     }
@@ -58,6 +59,22 @@ private actor TestQuotaClient: QuotaClient {
         let window = QuotaWindow(usedPercent: 10, windowDurationMins: 300, resetsAt: Date().addingTimeInterval(reset).timeIntervalSince1970)
         let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: window, secondary: nil, planType: "plus", spendControlReached: nil, rateLimitReachedType: nil)
         return QuotaSnapshot(observedAt: Date().addingTimeInterval(-age), accountScope: scope, accountLabel: "Fixture account", planType: "plus", buckets: [bucket])
+    }
+    @MainActor static func missingActivityRecovery() async throws {
+        let client = TestQuotaClient([.value(snapshot()), .value(snapshot()), .value(snapshot())])
+        let (state, defaults, suite) = makeState(client)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        state.refresh(reason: "兜底额度核验")
+        try await eventually("quota without activity") { state.verified && !state.isRefreshing }
+        require(state.tokenActivity == nil, "Background quota checks stay lightweight")
+        state.setPanelVisible(true)
+        state.panelOpened()
+        try await eventually("missing activity on panel open") { state.tokenActivity != nil && !state.isRefreshing }
+        require(await client.usageCalls == 1, "Opening a fresh quota panel still recovers missing activity")
+        state.pollQuota()
+        try await eventually("visible fallback") { !state.isRefreshing }
+        require(await client.usageCalls == 1, "Frequent visible quota checks do not repeat statistics requests")
+        print("PASS: missing activity recovers on panel open with independent statistics throttling")
     }
     @MainActor static func makeState(_ client: any QuotaClient, delays: [TimeInterval] = [0.08, 0.16, 0.32]) -> (AppState, UserDefaults, String) {
         let suite = "usagebar-recovery-" + UUID().uuidString

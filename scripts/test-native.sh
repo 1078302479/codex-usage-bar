@@ -32,3 +32,6 @@ if [[ "${1:-}" == "--watch" ]]; then
 else
   printf 'Monitor test compiled; use --watch in a normal macOS terminal to exercise FSEvents.\n'
 fi
+
+xcrun swiftc "${FLAGS[@]}" -D STABILITY_TEST "$ROOT"/native/Sources/*.swift "$ROOT/native/Tests/SharedWorkspaceTests.swift" -o "$ROOT/.build/SharedWorkspaceTests"
+"$ROOT/.build/SharedWorkspaceTests"

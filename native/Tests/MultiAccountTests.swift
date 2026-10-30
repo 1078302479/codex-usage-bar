@@ -31,6 +31,14 @@ private actor ProfileClient: QuotaClient {
         fatalError("Timed out: " + label)
     }
     @MainActor static func main() async throws {
+        let normal = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+        precondition(CodexClient.primaryHome(environment: [:]) == normal)
+        precondition(CodexClient.primaryHome(environment: ["CODEX_HOME": AppState.secondAccountHome.path]) == normal, "B desktop environment must not replace primary identity")
+        precondition(CodexClient.primaryHome(environment: ["CODEX_HOME": "/fixture/custom"]).path == "/fixture/custom", "Explicit custom primary homes remain supported")
+        let fixture = "10 1 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n11 10 /Applications/ChatGPT.app/codex app-server -c sqlite_home=/fixture -c cli_auth_credentials_store=file\n22 1 /Applications/ChatGPT.app/codex app-server"
+        precondition(DualClientController.detectSecondary(processList: fixture, desktopPIDs: [10]) == true)
+        precondition(DualClientController.detectSecondary(processList: fixture, desktopPIDs: [22]) == false)
+        precondition(DualClientController.detectSecondary(processList: fixture, desktopPIDs: [10,22]) == nil)
         try await coordinator()
         try await transport()
         print("PASS: independent profiles, login lifecycle, environment and process isolation")
@@ -61,6 +69,20 @@ private actor ProfileClient: QuotaClient {
         first.showingSecondAccountDetails = false
         precondition(first.displayedAccount === first && displayChanges == 2)
         precondition(first.displayedAccount.menuTitle.contains("90%"), "Selected A menu uses A quota")
+        precondition(first.dualClient.roleLabel(secondary: false) == "登录待确认")
+        precondition(first.dualClient.orderedSecondary == [false, true])
+        first.dualClient.selectedSecondary = true
+        precondition(first.dualClient.orderedSecondary == [false, true], "Draft selection must not reorder accounts")
+        precondition(first.displayedAccount === first, "Execution draft must not change viewing account")
+        first.dualClient.restartSucceeded(secondary: true, label: "Fixture B")
+        precondition(first.displayedAccount === second && first.dualClient.selectedSecondary, "Successful B restart synchronizes menu and details")
+        precondition(first.dualClient.roleLabel(secondary: true) == "登录待确认", "Launch alone cannot prove the active backend")
+        precondition(first.dualClient.orderedSecondary == [true, false], "Successful B restart puts B first")
+        first.showingSecondAccountDetails = false
+        precondition(first.dualClient.orderedSecondary == [true, false], "Viewing A must not reorder execution accounts")
+        precondition(DualClientController(defaults: a).selectedSecondary, "Successful execution selection survives tool restart")
+        first.dualClient.restartSucceeded(secondary: false, label: "Fixture A")
+        precondition(first.displayedAccount === first && !DualClientController(defaults: a).selectedSecondary, "Successful A restart synchronizes and persists")
         precondition(a.data(forKey: "quota-cache.v1") != b.data(forKey: "quota-cache.v1"), "Profile caches must differ")
         first.setPanelVisible(true)
         precondition(second.panelVisible && second.quotaPollInterval == 15)

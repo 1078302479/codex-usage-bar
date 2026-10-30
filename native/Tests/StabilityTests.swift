@@ -7,6 +7,7 @@ import Foundation
         if CommandLine.arguments.contains("--ui") { presentationLifecycle() }
         if CommandLine.arguments.contains("--window") { fallbackWindowLifecycle() }
         if CommandLine.arguments.contains("--exclusive") { exclusivePresentation() }
+        if CommandLine.arguments.contains("--menu") { menuVisibility() }
     }
 
     static func recentLogs() throws {
@@ -41,6 +42,35 @@ import Foundation
 
     @MainActor static func settle() {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+
+    @MainActor static func menuVisibility() {
+        _ = NSApplication.shared
+        let suite = "usagebar-menu-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(defaults: defaults)
+        state.isRefreshing = true
+        let delegate = AppDelegate(state: state)
+        delegate.configurePresentation()
+        let item = delegate.statusItem!
+        let button = item.button!
+        for _ in 0..<10 {
+            state.preferences.isStacked = true
+            state.preferences.showIcon = false
+            precondition(button.imagePosition == .imageOnly && button.image != nil)
+            state.preferences.isStacked = false
+            settle()
+            precondition(button.imagePosition == .noImage && button.image == nil)
+            precondition(!button.attributedTitle.string.isEmpty, "Text-only mode must retain a visible entry")
+            precondition(item.isVisible && button.frame.width > 0, "Menu entry must remain present after layout changes")
+            let title = button.attributedTitle
+            for _ in 0..<20 { state.onDisplayChange?() }
+            precondition(button.attributedTitle.isEqual(to: title) && item.isVisible)
+            state.preferences.showIcon = true
+            precondition(button.imagePosition == .imageLeading && button.image != nil)
+        }
+        print("PASS: menu remains visible across stacked/text/icon transitions and repeated refreshes")
     }
 
     @MainActor static func fallbackWindowLifecycle() {
