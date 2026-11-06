@@ -10,13 +10,37 @@ final class AppState: ObservableObject {
     let loginItem = LoginItemController()
     lazy var dualClient: DualClientController = {
         let controller = DualClientController(defaults: defaults)
+        controller.onAccountUncertain = { [weak self] in self?.syncActiveReminders(force: true) }
         controller.onRestartSucceeded = { [weak self] secondary in
             guard let self else { return }
             self.showingSecondAccountDetails = secondary && self.secondAccount != nil
+            self.syncActiveReminders(force: true)
             self.displayedAccount.panelOpened()
         }
         return controller
     }()
+    private var reminderSnapshot: QuotaSnapshot?
+    private var reminderVerified = false
+    var onReminderDataChange: (() -> Void)?
+    var reminderAccount: AppState? {
+        guard secondAccount != nil else { return dualClient.activeSecondary ? nil : self }
+        guard dualClient.detected else { return nil }
+        return dualClient.activeSecondary ? secondAccount : self
+    }
+    func syncActiveReminders(force: Bool = false) {
+        guard codexHome == nil else { onReminderDataChange?(); return }
+        let account = reminderAccount
+        let snapshot = account?.snapshot
+        let valid = account?.verified == true && !paused
+        guard force || snapshot != reminderSnapshot || valid != reminderVerified else { return }
+        reminderSnapshot = snapshot; reminderVerified = valid
+        reminders.update(snapshot: snapshot, verified: valid)
+        configureCreditCheck()
+    }
+    private func updateReminderData() {
+        if codexHome != nil { onReminderDataChange?() }
+        else { syncActiveReminders(force: true) }
+    }
     let reminders: ResetCreditReminderController
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
@@ -126,6 +150,7 @@ final class AppState: ObservableObject {
             }
             secondary.preferences = preferences
             secondary.onDisplayChange = { [weak self] in self?.onDisplayChange?() }
+            secondary.onReminderDataChange = { [weak self] in self?.syncActiveReminders() }
             secondAccount = secondary
             showingSecondAccountDetails = dualClient.activeSecondary
             if started { secondary.start() }
@@ -134,8 +159,10 @@ final class AppState: ObservableObject {
             showingSecondAccountDetails = false
             secondAccount = nil
             secondary.onDisplayChange = nil
+            secondary.onReminderDataChange = nil
             Task { await secondary.stop() }
         }
+        syncActiveReminders(force: true)
         onDisplayChange?()
     }
 
@@ -200,7 +227,7 @@ final class AppState: ObservableObject {
         else { preferences = Preferences() }
         if let data = defaults.data(forKey: "quota-cache.v1") { snapshot = try? JSONDecoder().decode(QuotaSnapshot.self, from: data) }
         reminders.onConfigurationChange = { [weak self] in self?.configureCreditCheck() }
-        reminders.onNeedsRefresh = { [weak self] in self?.scheduleRefresh(reason: "重置卡提醒核验", delay: 0) }
+        reminders.onNeedsRefresh = { [weak self] in self?.reminderAccount?.scheduleRefresh(reason: "重置卡提醒核验", delay: 0) }
     }
 
     var bucket: QuotaBucket? { QuotaPresentation.selectedBucket(snapshot, preferences: preferences) }
@@ -382,7 +409,7 @@ final class AppState: ObservableObject {
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; activityAttemptAt = nil }
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 if codexHome != nil { loginMessage = "账号 B 已核验。" }
-                reminders.update(snapshot: result, verified: true)
+                updateReminderData()
                 configureCreditCheck()
                 cancelRetry()
                 if result.accountScope != nil, let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: "quota-cache.v1") }
@@ -439,7 +466,7 @@ final class AppState: ObservableObject {
     private func recordFailure(_ failure: CodexFailure, invalidateQuota: Bool = true) {
         lastFailure = failure; now = Date()
         authRecoveryAfter = failure == .authRequired ? Date().addingTimeInterval(60) : nil
-        if invalidateQuota { verified = false; reminders.update(snapshot: nil, verified: false) }
+        if invalidateQuota { verified = false; updateReminderData() }
         resetTimer?.invalidate(); resetTimer = nil
         scheduledRefresh?.cancel(); scheduledRefresh = nil
         queuedReason = nil
@@ -469,7 +496,7 @@ final class AppState: ObservableObject {
         activityAttemptAt = nil
         verified = false; snapshot = nil; tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; lastSuccessfulAt = nil
         defaults.removeObject(forKey: "quota-cache.v1")
-        reminders.update(snapshot: nil, verified: false)
+        updateReminderData()
         creditCheckTimer?.invalidate(); creditCheckTimer = nil
     }
 
@@ -524,14 +551,14 @@ final class AppState: ObservableObject {
         // Only opt-in reminder users gain periodic checks for cards used elsewhere.
         // Also validate shortly before an upcoming scheduled reminder/expiry.
         let now = Date()
-        let boundaries = snapshot?.resetCredits?.availableDetails.compactMap(\.expiryDate).flatMap {
+        let boundaries = reminderAccount?.snapshot?.resetCredits?.availableDetails.compactMap(\.expiryDate).flatMap {
             [$0.addingTimeInterval(-86430), $0]
         }.filter { $0 > now } ?? []
         let interval = max(1, min(900, boundaries.min()?.timeIntervalSince(now) ?? 900))
         creditCheckTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.refresh(reason: "重置卡状态核验")
+                self.reminderAccount?.refresh(reason: "重置卡状态核验")
                 self.configureCreditCheck()
             }
         }
@@ -541,7 +568,7 @@ final class AppState: ObservableObject {
         guard !paused else { return }
         secondAccount?.pause(); cancelSignIn()
         paused = true; verified = false; invalidateConnection()
-        reminders.update(snapshot: nil, verified: false)
+        updateReminderData()
         creditCheckTimer?.invalidate(); creditCheckTimer = nil
         clockTimer?.invalidate(); clockTimer = nil; pollTimer?.invalidate(); pollTimer = nil
         now = Date(); onDisplayChange?()

@@ -8,6 +8,10 @@
 
 v0.1.6 includes two-account monitoring and one-click switching to the alternate account with a client restart. See [account switching](docs/account-switch.md).
 
+## v0.1.7: account-switch project visibility fix
+
+Fixes empty project lists after updating ChatGPT and switching accounts. Upgrade, finish running work, switch back to the original account, then switch to the alternate account again. Local project metadata and account caches are synchronized with backups; credentials remain separate. Confirmed on ChatGPT macOS 26.1103.31037. [Release notes](docs/releases/v0.1.7.md).
+
 ## Overview
 
 CodexUsageBar is a lightweight macOS menu bar utility built with Swift, AppKit, and SwiftUI. It reads quota and official account token activity through your local Codex App Server. No API key entry, browser backend, or Python service is required by the native app.
@@ -102,7 +106,7 @@ No Intel binary is provided and Intel hardware has not been validated. API-key-o
 
 ## Install
 
-1. Download `CodexUsageBar-0.1.6-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
+1. Download `CodexUsageBar-0.1.7-mac-arm64.dmg` from [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest).
 2. Open the DMG and drag **CodexUsageBar** into **Applications**.
 3. Eject the installation disk and launch the app from Applications.
 4. Optionally enable **Settings → Appearance & About → Launch at login**. The current UI is in Chinese.
@@ -131,7 +135,7 @@ Online update checking is included in the refreshed v0.1.6 installer (build 11).
 
 Enable **Settings → Connection & Refresh → Two-account monitoring**, choose **Sign in to a second account**, and select another ChatGPT account on the official login page. Account A follows the local Codex login; account B has an independent session. Both are checked concurrently, with compact quota/reset comparison rows. Select either card to view its reset credits, Token activity, and connection status below. A single menu bar item follows the account selected in the panel; selecting A or B switches both details and menu bar quota. The panel's top refresh button validates both accounts.
 
-B uses `~/Library/Application Support/CodexUsageBar/accounts/secondary` as its isolated `CODEX_HOME`, with credentials managed by Codex in a user-private directory. The app never reads or copies A's authentication files. Disabling B stops monitoring but retains its login for later use. Reset-credit notifications currently remain exclusive to A. Signing into the same account twice does not combine or increase allowance.
+B uses `~/Library/Application Support/CodexUsageBar/accounts/secondary` as its isolated `CODEX_HOME`, with credentials managed by Codex in a user-private directory. The app never reads or copies A's authentication files. Disabling B stops monitoring but retains its login for later use. Reset-credit notifications follow the active primary account; the backup account does not send reminders. Signing into the same account twice does not combine or increase allowance.
 
 Included in v0.1.6. Known desktop backend launch patterns identify the active account; unknown or conflicting instances disable switching. Switching gracefully quits and reopens ChatGPT: finish tasks and save work first. The original desktop workspace remains in use, with shared session/task state. No tokens are copied and no model proxy is used. Internal desktop overrides may change with client updates; verify the native Codex identity after restarting.
 

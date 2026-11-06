@@ -44,7 +44,7 @@ struct DualAccountPanelView: View {
                 Spacer()
             }.padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 3)
 
-            ResetCreditSectionView(state: selected, openSettings: openSettings, allowsReminders: !selectedB)
+            ResetCreditSectionView(state: selected, openSettings: { primary.settingsTab = .reminders; openSettings() }, allowsReminders: controller.detected && selectedB == controller.activeSecondary)
                 .id(selectedB ? "credits-B" : "credits-A")
             TokenActivityView(state: selected).id(selectedB ? "activity-B" : "activity-A")
             HStack(spacing: 6) {

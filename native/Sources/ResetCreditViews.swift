@@ -113,7 +113,7 @@ struct ResetCreditSectionView: View {
                 }.buttonStyle(.plain).foregroundStyle(PanelPalette.link)
                     .accessibilityLabel("设置重置卡到期提醒")
             } else {
-                Text("账号 B 暂不发送到期通知").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
+                Text("备用账号不发送到期通知").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
             }
         }
     }

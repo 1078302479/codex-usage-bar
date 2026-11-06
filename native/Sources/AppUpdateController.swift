@@ -40,7 +40,7 @@ final class AppUpdateController: ObservableObject {
     let currentVersion: String
     private var timer: Timer?
     private var task: Task<Void, Never>?
-    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.6") { currentVersion = version }
+    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.7") { currentVersion = version }
     var available: Bool { latest?.safeURL != nil && AppRelease.newer(latest!.tag_name, than: currentVersion) }
     func start() {
         guard timer == nil else { return }

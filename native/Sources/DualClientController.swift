@@ -38,6 +38,82 @@ final class DualClientController: ObservableObject {
             try fm.createSymbolicLink(at: target, withDestinationURL: source)
         }
     }
+    // New desktop versions also read project state through the backend's CODEX_HOME.
+    // Share only local workspace metadata; account UI state and credentials stay isolated.
+    static func repairAccountWorkspaceState(home: URL) throws {
+        let fm = FileManager.default
+        let file = home.appendingPathComponent(".codex-global-state.json")
+        guard fm.fileExists(atPath: file.path) else { return }
+        let data = try Data(contentsOf: file)
+        guard var state = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var accounts = state["electron-account-renderer-state-v1"] as? [String: Any],
+              var inactive = accounts["inactive"] as? [String: [String: Any]] else { return }
+        let keys = ["local-projects", "selected-project", "project-order", "project-appearances",
+                    "app-server-project-id-by-legacy-project-id-by-host", "app-server-projects-migration-by-host",
+                    "sidebar-project-thread-orders", "thread-project-assignments", "thread-project-membership-host-ids",
+                    "thread-writable-roots", "thread-workspace-root-hints", "projectless-thread-ids",
+                    "thread-projectless-output-directories", "pinned-thread-ids", "app-server-migrated-pinned-thread-ids-by-host"]
+        // Recover a missing active list from the account cache without replacing a nonempty list.
+        var workspace = state
+        if (workspace["local-projects"] as? [String: Any] ?? [:]).isEmpty {
+            let candidates = inactive.values.compactMap { $0["globals"] as? [String: Any] }
+                .filter { !($0["local-projects"] as? [String: Any] ?? [:]).isEmpty }
+            if candidates.isEmpty { return }
+            guard candidates.count == 1, let recovered = candidates.first else { throw CodexFailure.invalidResponse }
+            workspace = recovered
+        }
+        for key in keys { if let value = workspace[key] { state[key] = value } }
+        for (owner, var entry) in inactive {
+            var globals = entry["globals"] as? [String: Any] ?? [:]
+            for key in keys { if let value = workspace[key] { globals[key] = value } }
+            entry["globals"] = globals
+            inactive[owner] = entry
+        }
+        accounts["inactive"] = inactive
+        state["electron-account-renderer-state-v1"] = accounts
+        if (state as NSDictionary).isEqual(to: try JSONSerialization.jsonObject(with: data) as! [String: Any]) { return }
+        try fm.copyItem(at: file, to: home.appendingPathComponent(".codex-global-state.json.workspace-backup-" + UUID().uuidString))
+        let updated = try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys])
+        try updated.write(to: file, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+    static func syncWorkspaceState(primary: URL, secondary: URL) throws {
+        let fm = FileManager.default
+        let name = ".codex-global-state.json"
+        let source = primary.appendingPathComponent(name)
+        guard fm.fileExists(atPath: source.path) else { return }
+        let target = secondary.appendingPathComponent(name)
+        guard let original = try JSONSerialization.jsonObject(with: Data(contentsOf: source)) as? [String: Any] else {
+            throw CodexFailure.invalidResponse
+        }
+        var result: [String: Any] = [:]
+        let existing = fm.fileExists(atPath: target.path) ? try Data(contentsOf: target) : nil
+        if let existing {
+            guard let value = try JSONSerialization.jsonObject(with: existing) as? [String: Any] else { throw CodexFailure.invalidResponse }
+            result = value
+        }
+        let keys = ["local-projects", "selected-project", "project-order", "project-appearances",
+                    "sidebar-project-thread-orders", "thread-project-assignments", "thread-project-membership-host-ids",
+                    "thread-writable-roots", "thread-workspace-root-hints", "projectless-thread-ids",
+                    "thread-projectless-output-directories", "pinned-thread-ids", "app-server-migrated-pinned-thread-ids-by-host"]
+        for key in keys {
+            if let value = original[key] { result[key] = value }
+        }
+        for key in ["app-server-project-id-by-legacy-project-id-by-host", "app-server-projects-migration-by-host"] {
+            if var hosts = original[key] as? [String: Any] {
+                if let state = hosts["local:" + primary.path] { hosts["local:" + secondary.path] = state }
+                result[key] = hosts
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
+        if let existing, let old = try JSONSerialization.jsonObject(with: existing) as? NSDictionary,
+           old.isEqual(to: result) { return }
+        if fm.fileExists(atPath: target.path) {
+            try fm.copyItem(at: target, to: secondary.appendingPathComponent(name + ".workspace-backup-" + UUID().uuidString))
+        }
+        try data.write(to: target, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+    }
     static func prepareLauncher(cliPath: String) throws -> URL {
         let cli = try CodexClient.discover(custom: cliPath)
         let fm = FileManager.default
@@ -45,6 +121,7 @@ final class DualClientController: ObservableObject {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
         try shareSessions(primary: primaryHome, secondary: AppState.secondAccountHome)
+        try syncWorkspaceState(primary: primaryHome, secondary: AppState.secondAccountHome)
         let launcher = root.appendingPathComponent("codex-secondary")
         let source = "#!/bin/sh\nunset OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN CODEX_APP_SERVER_WS_URL\nexport CODEX_HOME=" + quote(AppState.secondAccountHome.path) + "\nexec " + quote(cli) + " -c 'cli_auth_credentials_store=\"file\"' -c " + quote("sqlite_home=\"" + primaryHome.path + "\"") + " \"$@\"\n"
         try source.write(to: launcher, atomically: true, encoding: .utf8)
@@ -52,6 +129,7 @@ final class DualClientController: ObservableObject {
         return launcher
     }
     private let defaults: UserDefaults
+    var onAccountUncertain: (() -> Void)?
     var onRestartSucceeded: ((Bool) -> Void)?
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -82,7 +160,7 @@ final class DualClientController: ObservableObject {
         guard !isSwitching, !detecting, Date().timeIntervalSince(lastDetection) > 3 else { return }
         guard let bundleID = Bundle(url: URL(fileURLWithPath: "/Applications/ChatGPT.app"))?.bundleIdentifier else { return }
         let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
-        guard !pids.isEmpty else { detected = false; return }
+        guard !pids.isEmpty else { detected = false; onAccountUncertain?(); return }
         detecting = true; lastDetection = Date()
         Task {
             let result = await Task.detached { () -> Bool? in
@@ -97,15 +175,17 @@ final class DualClientController: ObservableObject {
             }.value
             detecting = false
             guard !isSwitching else { return }
-            guard let result else { detected = false; return }
-            let changed = activeSecondary != result || !detected
-            detected = true
-            activeSecondary = result
-            if changed {
-                selectedSecondary = result
-                defaults.set(result, forKey: "execution-account.secondary.v1")
-                onRestartSucceeded?(result)
-            }
+            guard let result else { detected = false; onAccountUncertain?(); return }
+            acceptDetectedAccount(result)
+        }
+    }
+    func acceptDetectedAccount(_ result: Bool) {
+        let changed = activeSecondary != result || !detected
+        detected = true; activeSecondary = result
+        if changed {
+            selectedSecondary = result
+            defaults.set(result, forKey: "execution-account.secondary.v1")
+            onRestartSucceeded?(result)
         }
     }
     func restartSucceeded(secondary: Bool, label: String) {
@@ -152,6 +232,7 @@ final class DualClientController: ObservableObject {
                 guard apps.allSatisfy({ $0.isTerminated }) else {
                     message = "客户端尚未退出，请处理未保存内容后重试。"; return
                 }
+                try Self.repairAccountWorkspaceState(home: Self.primaryHome)
                 let wrapper: URL
                 if useSecondary { wrapper = try Self.prepareLauncher(cliPath: cliPath) }
                 else { wrapper = URL(fileURLWithPath: try CodexClient.discover(custom: cliPath)) }

@@ -9,6 +9,10 @@
 
 v0.1.6 支持双账号监测，以及弹窗内一键切换备用账号并重启客户端。参见[账号切换说明](docs/account-switch.md)。
 
+## v0.1.7：修复更新客户端后切换账号项目消失
+
+新版 ChatGPT 会恢复账号专属的项目状态，可能让备用账号侧边栏显示空项目列表，即使原项目仍在。升级后保存任务，使用“切换并重启”切回原账号，再切到备用账号，自动恢复并同步本地项目状态；修改前备份，凭证保持独立。已在 ChatGPT 26.1103.31037 上实测确认。详见 [升级说明](docs/releases/v0.1.7.md)。
+
 ## 简介
 
 CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、AppKit 和 SwiftUI 实现。它通过本机 Codex 的 App Server 读取当前登录账号的套餐额度和官方 Token 活动，不需要在应用中填写 API Key，也不依赖网页或 Python 后台服务。
@@ -103,7 +107,7 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 
 ## 安装
 
-1. 在 [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest) 下载 `CodexUsageBar-0.1.6-mac-arm64.dmg`。
+1. 在 [Releases](https://github.com/1078302479/codex-usage-bar/releases/latest) 下载 `CodexUsageBar-0.1.7-mac-arm64.dmg`。
 2. 双击 DMG，将 **CodexUsageBar** 拖到右侧 **Applications（应用程序）** 文件夹。
 3. 推出安装磁盘，从“应用程序”打开应用。
 4. 需要自启动时，进入 **设置 → 外观与关于 → 登录时自动启动**。
@@ -132,7 +136,7 @@ CodexUsageBar 是一个轻量的原生 macOS 菜单栏工具，使用 Swift、Ap
 
 在 **设置 → 连接与更新 → 双账号监测** 开启“同时监测第二个账号”，点击“登录第二个账号…”，在官方网页选择另一个 ChatGPT 账号并完成授权。账号 A 沿用本机 Codex 登录，账号 B 独立保存，两个账号并行核验；面板上方紧凑对比行展示额度和重置时间，点击账号卡片后，下方切换其重置卡、Token 活动和连接状态；菜单栏只保留一个入口，跟随当前选中的账号显示；点击 A/B 卡片会同时切换详情与菜单栏。面板顶部刷新会核验两个账号。
 
-账号 B 使用独立的 `~/Library/Application Support/CodexUsageBar/accounts/secondary` 作为 `CODEX_HOME`，由 Codex 自己管理登录凭证；该目录仅当前用户可访问。应用不读取或复制账号 A 的认证文件。关闭监测会停止 B 的连接并保留登录，之后可重新开启；当前重置卡通知仍只服务账号 A。同一账号重复登录不会获得或合并额外额度。
+账号 B 使用独立的 `~/Library/Application Support/CodexUsageBar/accounts/secondary` 作为 `CODEX_HOME`，由 Codex 自己管理登录凭证；该目录仅当前用户可访问。应用不读取或复制账号 A 的认证文件。关闭监测会停止 B 的连接并保留登录，之后可重新开启；重置卡通知跟随当前主账号，备用账号不发送通知。同一账号重复登录不会获得或合并额外额度。
 
 已随 v0.1.6 发布。当前执行账号根据桌面后台进程的已知启动方式识别；未知或存在冲突时禁用切换。切换会正常退出并重开 ChatGPT，请先结束任务、保存内容。默认桌面工作区保留，两个账号共用会话/任务索引；不复制 Token、不经过模型代理。客户端内部启动参数随版本变化，请核对重启后的 Codex 账号。
 

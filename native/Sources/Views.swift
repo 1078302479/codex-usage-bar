@@ -308,7 +308,16 @@ struct UsageSettingsView: View {
                 }
             }.formStyle(.grouped).tabItem { Label("连接与更新", systemImage: "arrow.triangle.2.circlepath") }.tag(SettingsTab.connection)
 
-            ResetCreditReminderSettingsView(controller: state.reminders)
+            VStack(spacing: 0) {
+                if let account = state.reminderAccount {
+                    Text("当前主账号：" + (account.snapshot?.accountLabel ?? "等待核验"))
+                        .font(.caption).foregroundStyle(.secondary).padding(.top, 12)
+                } else {
+                    Text("等待确认当前主账号，确认后安排提醒。")
+                        .font(.caption).foregroundStyle(.secondary).padding(.top, 12)
+                }
+                ResetCreditReminderSettingsView(controller: state.reminders)
+            }
                 .tabItem { Label("重置卡提醒", systemImage: "bell.badge") }.tag(SettingsTab.reminders)
 
             Form {

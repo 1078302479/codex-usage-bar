@@ -221,6 +221,37 @@ private actor CardFixtureClient: QuotaClient {
         check(await center.pendingIDs().count == 1, "Wake revalidates and reschedules")
         await state.stop()
         check(await center.pendingIDs().count == 1, "Normal quit preserves already scheduled local notifications")
+        let secondSuite = "usagebar-secondary-reminders-" + UUID().uuidString
+        let secondDefaults = UserDefaults(suiteName: secondSuite)!
+        defer { secondDefaults.removePersistentDomain(forName: secondSuite) }
+        let second = AppState(defaults: secondDefaults, client: CardFixtureClient(), reminderCenter: MonitoringOnlyReminderCenter(), codexHome: URL(fileURLWithPath: "/fixture/B"))
+        let primarySuite = "usagebar-primary-reminders-" + UUID().uuidString
+        let primaryDefaults = UserDefaults(suiteName: primarySuite)!
+        defer { primaryDefaults.removePersistentDomain(forName: primarySuite) }
+        let main = AppState(defaults: primaryDefaults, client: CardFixtureClient(), reminderCenter: center, secondaryFactory: { second })
+        main.dualClient.onRestartSucceeded = { _ in main.syncActiveReminders(force: true) }
+        main.setSecondAccountEnabled(true)
+        main.isRefreshing = true; second.isRefreshing = true
+        let a = snapshot([credit("primary", expiry: Date().addingTimeInterval(172800))], scope: "A", at: Date())
+        let b = snapshot([credit("secondary", expiry: Date().addingTimeInterval(172800))], scope: "B", at: Date())
+        main.snapshot = a; main.verified = true
+        second.snapshot = b; second.verified = true
+        main.dualClient.acceptDetectedAccount(false)
+        await main.reminders.setEnabled(true)
+        main.syncActiveReminders(force: true); await main.reminders.flush()
+        let aIDs = await center.pendingIDs()
+        check(aIDs.count == 1 && main.reminderAccount === main, "A primary schedules only A")
+        main.dualClient.acceptDetectedAccount(true)
+        main.syncActiveReminders(force: true); await main.reminders.flush()
+        let bIDs = await center.pendingIDs()
+        check(bIDs.count == 1 && bIDs.isDisjoint(with: aIDs) && main.reminderAccount === second, "B primary replaces A reminders with B")
+        main.showingSecondAccountDetails = false
+        main.syncActiveReminders(force: true); await main.reminders.flush()
+        check(await center.pendingIDs() == bIDs, "Viewing backup A must not change B reminders")
+        main.dualClient.acceptDetectedAccount(false)
+        main.syncActiveReminders(force: true); await main.reminders.flush()
+        check(await center.pendingIDs() == aIDs, "Switching back restores A scheduling")
+        print("PASS: A/B primary reminder routing, backup-view isolation and obsolete notification cancellation")
         print("PASS: opt-in triggers account validation; initialization, sleep/wake and normal-quit integration")
     }
 }
