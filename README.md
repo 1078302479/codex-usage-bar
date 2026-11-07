@@ -1,21 +1,13 @@
 <div align="center">
   <img src="docs/images/app-icon.png" width="128" alt="CodexUsageBar icon">
-  <h1>CodexUsageBar</h1>
+  <h1>CodexUsageBar for macOS</h1>
   <p>在 macOS 菜单栏查看 Codex 剩余额度、重置时间与 Token 活动。</p>
   <p>A native macOS menu bar app for Codex quota, reset times, and token activity.</p>
   <p><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
-  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS 下载页</a> · <a href="https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0">Windows 下载页</a> · <a href="#windows-下载与安装">Windows 安装说明</a> · <a href="#从源码构建">从源码构建</a> · <a href="docs/architecture.md">技术说明</a></p>
+  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS 下载页</a> · <a href="#界面预览">macOS 界面截图</a> · <a href="#从源码构建">从源码构建</a> · <a href="docs/architecture.md">技术说明</a></p>
 </div>
 
-## Windows 下载与安装
-
-Windows 预览版适用于 Windows 11 x64，可在 Codex 左侧栏查看剩余额度和重置卡。
-
-1. 先通过 Microsoft Store 安装官方 Codex。
-2. 下载 `CodexUsageBar-Windows-x64-Setup.exe` 并双击，按向导安装。运行环境已包含在安装包里。[直接下载 EXE](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.0/CodexUsageBar-Windows-x64-Setup.exe)
-3. 保存工作并退出当前 Codex，从桌面或开始菜单打开 **Codex UsageBar**。
-
-安装包尚未签名，Windows 可能提示发布者未知。版本信息和 SHA-256 校验文件可在发布页的 **Assets** 区域找到。[Windows 发布页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0) · [升级和卸载说明](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/README.md)
+Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0)
 
 v0.1.6 支持双账号监测，以及弹窗内一键切换备用账号并重启客户端。参见[账号切换说明](docs/account-switch.md)。
 

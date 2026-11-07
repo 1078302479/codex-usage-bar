@@ -1,20 +1,12 @@
 <div align="center">
   <img src="docs/images/app-icon.png" width="128" alt="CodexUsageBar icon">
-  <h1>CodexUsageBar</h1>
+  <h1>CodexUsageBar for macOS</h1>
   <p>A native macOS menu bar app for Codex quota, reset times, and token activity.</p>
   <p><a href="README.md">简体中文</a> · <strong>English</strong></p>
-  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS release</a> · <a href="https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0">Windows release</a> · <a href="#download-and-install-on-windows">Windows install guide</a> · <a href="#build-from-source">Build from source</a> · <a href="docs/architecture.md">Architecture</a></p>
+  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS release</a> · <a href="#screenshots">macOS screenshots</a> · <a href="#build-from-source">Build from source</a> · <a href="docs/architecture.md">Architecture</a></p>
 </div>
 
-## Download and install on Windows
-
-The Windows 11 x64 preview shows remaining quota and reset credits in the Codex sidebar.
-
-1. Install the official Codex app from the Microsoft Store.
-2. Download and run `CodexUsageBar-Windows-x64-Setup.exe`, then follow the setup wizard. The installer includes its runtime. [Download the EXE](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.0/CodexUsageBar-Windows-x64-Setup.exe)
-3. Save your work and exit Codex, then open **Codex UsageBar** from the desktop or Start menu.
-
-The installer is unsigned, so Windows may show an unknown-publisher prompt. The release page lists the version details and the SHA-256 checksum under **Assets**. [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0) · [Upgrade and uninstall instructions](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/README.en.md)
+The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0)
 
 v0.1.6 includes two-account monitoring and one-click switching to the alternate account with a client restart. See [account switching](docs/account-switch.md).
 
