@@ -80,7 +80,8 @@ export async function checkFiles(root, manifest, state) {
 
 export function assertAppClosed(app) {
   if (process.platform !== 'win32') throw new Error('Activation is Windows-only');
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command',
     '$ErrorActionPreference="Stop"; $target=$env:USAGEBAR_TARGET_DIRECTORY; $active=Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($target,[System.StringComparison]::OrdinalIgnoreCase) }; if($active){exit 17}'],
   { env: { ...process.env, USAGEBAR_TARGET_DIRECTORY: app + '\\' }, windowsHide: true, encoding: 'utf8', timeout: 15000 });
   if (result.error || result.status !== 0) throw new Error('Client is running or process check failed. Save work and close the client before activation.');

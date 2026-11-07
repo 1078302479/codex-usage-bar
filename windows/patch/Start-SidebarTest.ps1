@@ -20,15 +20,7 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
 }
 
 # Never kill the user's current client or copy an authenticated user profile.
-$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
-if ($nodeCommand) {
-    $nodeExecutable = $nodeCommand.Source
-} else {
-    $nodeExecutable = Join-Path $env:USERPROFILE '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe'
-    if (-not (Test-Path -LiteralPath $nodeExecutable -PathType Leaf)) {
-        throw 'Node.js 20+ is required to verify the test copy before launch.'
-    }
-}
+$nodeExecutable = & (Join-Path $PSScriptRoot 'Resolve-SidebarNode.ps1')
 
 & $nodeExecutable (Join-Path $PSScriptRoot 'manage.mjs') verify $testDirectory $stageDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Test copy verification failed; refusing to launch.' }

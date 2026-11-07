@@ -2,6 +2,7 @@ name: Windows checks
 on:
   push:
     branches: [windows]
+    tags: ['windows-v*']
   pull_request:
     branches: [windows]
   workflow_dispatch:
@@ -29,3 +30,48 @@ jobs:
             [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors.Count) { throw ($errors -join "`n") }
           }
+  release:
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm --dir windows install --frozen-lockfile
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.4.exe'
+          $compiler = Join-Path $env:RUNNER_TEMP 'inno'
+          curl.exe -fsSL --retry 2 --output $setup 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup download failed.' }
+          $signature = Get-AuthenticodeSignature -FilePath $setup
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.GetNameInfo('SimpleName', $false) -ne 'Pyrsys B.V.') {
+            throw 'Inno Setup publisher verification failed.'
+          }
+          $options = '/PORTABLE=1 /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="' + $compiler + '"'
+          $process = Start-Process -FilePath $setup -ArgumentList $options -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Compiler setup failed ($($process.ExitCode))." }
+          $version = $env:GITHUB_REF_NAME.Substring('windows-v'.Length)
+          ./windows/setup/Build-Installer.ps1 -Compiler (Join-Path $compiler 'ISCC.exe') -Version $version
+      - name: Publish Windows prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = '.local/windows-package/CodexUsageBar-Windows-x64-Setup.exe'
+          $notes = @'
+          Download **CodexUsageBar-Windows-x64-Setup.exe** and run it on Windows 11 x64 with the official Microsoft Store edition of Codex already installed. Setup includes its own runtime.
+
+          After setup, exit Codex and open **Codex UsageBar** from the desktop or Start menu. The setup is unsigned, and the generated local client copy has a modified signature.
+
+          [中文安装说明](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/README.md) · [English instructions](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/README.en.md)
+          '@
+          gh release create $env:GITHUB_REF_NAME $setup "$setup.sha256" --verify-tag --prerelease --latest=false --title "Codex UsageBar $env:GITHUB_REF_NAME" --notes $notes

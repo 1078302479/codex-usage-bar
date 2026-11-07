@@ -1,16 +1,39 @@
-param([string]$SourceApp = '', [switch]$SkipShortcut)
+param([string]$SourceApp = '', [switch]$SkipShortcut, [switch]$ReplaceExisting,
+      [switch]$CheckClientClosed, [switch]$RemoveClient, [string]$LogPath = '')
 $ErrorActionPreference = 'Stop'
 $repoDirectory = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $localDirectory = Join-Path $repoDirectory '.local'
 $clientDirectory = Join-Path $localDirectory 'windows-sidebar-client'
 $activeStage = Join-Path $localDirectory 'windows-sidebar-active-stage.txt'
-$nodeExecutable = (Get-Command node.exe -ErrorAction Stop).Source
+$clientExecutable = Join-Path $clientDirectory 'ChatGPT.exe'
 $manager = Join-Path $PSScriptRoot 'patch/manage.mjs'
 
+function Assert-ClientClosed {
+    if (Get-Process -Name ChatGPT -ErrorAction SilentlyContinue | Where-Object Path -EQ $clientExecutable) {
+        throw 'Exit Codex UsageBar from the File menu or system tray, then try again.'
+    }
+}
+
+if ($CheckClientClosed) { Assert-ClientClosed; return }
+if ($LogPath) { Start-Transcript -LiteralPath $LogPath -Force | Out-Null }
+$nodeExecutable = & (Join-Path $PSScriptRoot 'patch/Resolve-SidebarNode.ps1')
+function Remove-GeneratedTree([string]$Path) {
+    & $nodeExecutable -e 'require(''node:fs'').rmSync(process.argv[1], {recursive:true, force:true, maxRetries:3})' -- $Path
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Could not remove generated files in $Path" }
+}
+if ($RemoveClient) {
+    if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'runtime/node.exe') -PathType Leaf)) {
+        throw 'This operation is only available for the packaged installation.'
+    }
+    Assert-ClientClosed
+    Remove-GeneratedTree $localDirectory
+    if (Test-Path -LiteralPath $localDirectory) { throw 'Could not remove the generated Codex copy.' }
+    return
+}
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'node_modules/acorn/package.json'))) {
     throw 'Install the locked dependencies first: cd windows; pnpm install --frozen-lockfile'
 }
-if (Test-Path -LiteralPath $clientDirectory) {
+if ((Test-Path -LiteralPath $clientDirectory) -and -not $ReplaceExisting) {
     throw 'A test copy already exists. See windows/README.md for update and recovery steps.'
 }
 if (-not $SourceApp) {
@@ -34,19 +57,59 @@ if ($SourceApp.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase) -
 New-Item -ItemType Directory -Path $localDirectory -Force | Out-Null
 $installLockPath = Join-Path $localDirectory 'windows-sidebar-launch.lock'
 $installLock = [System.IO.File]::Open($installLockPath, 'CreateNew', 'ReadWrite', 'None')
+$stageDirectory = $null
+$candidate = $null
+$pointer = $null
+$committed = $false
 try {
-    if (Test-Path -LiteralPath $clientDirectory) { throw 'A test copy already exists.' }
-    $stageDirectory = Join-Path $localDirectory ('windows-sidebar-stage-' + [guid]::NewGuid().ToString('N'))
+    Assert-ClientClosed
+    if ((Test-Path -LiteralPath $clientDirectory) -and -not $ReplaceExisting) { throw 'A test copy already exists.' }
+    $id = [guid]::NewGuid().ToString('N')
+    $stageDirectory = Join-Path $localDirectory "windows-sidebar-stage-$id"
+    $candidate = Join-Path $localDirectory "new-$id"
+    $pointer = Join-Path $localDirectory "windows-sidebar-active-$id.txt"
     function Invoke-PatchManager([string]$Action, [string]$AppDirectory) {
         & $nodeExecutable $manager $Action $AppDirectory $stageDirectory
         if ($LASTEXITCODE -ne 0) { throw "Patch manager failed during $Action. See the error above." }
     }
     Invoke-PatchManager 'stage' $SourceApp
-    & robocopy.exe $SourceApp $clientDirectory /E /XJ /COPY:DAT /DCOPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+    & robocopy.exe $SourceApp $candidate /E /XJ /COPY:DAT /DCOPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
     if ($LASTEXITCODE -ge 8) { throw "Client copy failed (robocopy exit $LASTEXITCODE)." }
-    Invoke-PatchManager 'apply' $clientDirectory
-    Invoke-PatchManager 'verify' $clientDirectory
-    Set-Content -LiteralPath $activeStage -Value $stageDirectory -Encoding UTF8
+    Invoke-PatchManager 'apply' $candidate
+    Invoke-PatchManager 'verify' $candidate
+    Set-Content -LiteralPath $pointer -Value $stageDirectory -Encoding UTF8
+    $oldStage = $null
+    if (Test-Path -LiteralPath $activeStage -PathType Leaf) {
+        $oldStage = (Get-Content -LiteralPath $activeStage -Raw).Trim()
+    }
+    $previousClient = $null
+    if (Test-Path -LiteralPath $clientDirectory) {
+        Assert-ClientClosed
+        $previousClient = Join-Path $localDirectory "old-$id"
+        [IO.Directory]::Move($clientDirectory, $previousClient)
+    }
+    try {
+        [IO.Directory]::Move($candidate, $clientDirectory)
+        try {
+            if (Test-Path -LiteralPath $activeStage) {
+                [IO.File]::Replace($pointer, $activeStage, [NullString]::Value)
+            } else {
+                [IO.File]::Move($pointer, $activeStage)
+            }
+        } catch {
+            [IO.Directory]::Move($clientDirectory, $candidate)
+            throw
+        }
+    } catch {
+        if ($previousClient) { [IO.Directory]::Move($previousClient, $clientDirectory) }
+        throw
+    }
+    $committed = $true
+    if ($previousClient) { Remove-GeneratedTree $previousClient }
+    if ($oldStage -and (Split-Path -Parent $oldStage) -eq $localDirectory -and
+        (Split-Path -Leaf $oldStage) -match '^windows-sidebar-stage-[a-f0-9]{32}$') {
+        Remove-GeneratedTree $oldStage
+    }
 
     if (-not $SkipShortcut) {
         $desktop = [Environment]::GetFolderPath('Desktop')
@@ -71,6 +134,12 @@ try {
     }
     Write-Host 'Installed and verified. Exit the running official client, then use the shortcut or windows/patch/Open-SidebarClient.ps1.'
 } finally {
+    if ($candidate) { Remove-GeneratedTree $candidate }
+    if ($pointer -and (Test-Path -LiteralPath $pointer)) {
+        Remove-Item -LiteralPath $pointer -Force -ErrorAction Continue
+    }
+    if (-not $committed -and $stageDirectory) { Remove-GeneratedTree $stageDirectory }
     $installLock.Dispose()
     Remove-Item -LiteralPath $installLockPath
+    if ($LogPath) { Stop-Transcript | Out-Null }
 }

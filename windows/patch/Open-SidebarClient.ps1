@@ -1,4 +1,4 @@
-param([switch]$VerifyOnly, [string]$PatchStage = '')
+param([switch]$VerifyOnly, [string]$PatchStage = '', [switch]$ShowErrors)
 $ErrorActionPreference = 'Stop'
 $repoDirectory = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $testDirectory = Join-Path $repoDirectory '.local/windows-sidebar-client'
@@ -53,6 +53,10 @@ try {
     Write-LaunchStatus 'window-started' 'Verified patched-client path and visible window. Sidebar rendering needs visual confirmation.'
 } catch {
     Write-LaunchStatus 'failed' $_.Exception.Message
+    if ($ShowErrors) {
+        Add-Type -AssemblyName System.Windows.Forms
+        [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Codex UsageBar')
+    }
     exit 1
 } finally {
     if ($launchLock) {

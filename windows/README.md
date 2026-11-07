@@ -8,7 +8,17 @@
 
 ## 安装
 
-准备 Windows 11 x64、通过 Microsoft Store 安装的 Codex 桌面客户端、Git、Node.js 22+ 和 pnpm。已实测的客户端内部版本为 `26.1103.31037`，对应 Store 包 `26.1103.3517.0`。其他版本由脚本先分析界面结构和资源校验格式，检查不通过时停止。
+1. 在 Windows 11 x64 上先通过 Microsoft Store 安装官方 Codex。
+2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.0/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
+3. 保存工作并退出当前 Codex，从桌面或开始菜单打开 **Codex UsageBar**。
+
+安装包自带 Node.js 和所需依赖。安装过程会用本机 Store 客户端生成副本，需要预留几 GB 磁盘空间。已实测客户端内部版本 `26.1103.31037`，对应 Store 包 `26.1103.3517.0`。遇到其他客户端版本时，安装程序会先做兼容性检查。安装包尚未签名，Windows 可能显示发布者未知。
+
+退出 Codex UsageBar 后可以直接运行新版 EXE 更新。官方 Codex 更新后，重新运行安装包即可尝试生成对应版本的副本。卸载入口在 **Windows 设置 → 应用 → 已安装的应用 → Codex UsageBar (Windows)**。若安装失败，可在 `%LOCALAPPDATA%\CodexUsageBar-setup.log` 查看原因。
+
+## 从源码安装
+
+需要 Git、Node.js 22+ 和 pnpm。
 
 在 PowerShell 中执行以下命令。
 
@@ -27,7 +37,7 @@ powershell -NoProfile -File windows/patch/Open-SidebarClient.ps1
 
 如果自动发现失败，可通过 `-SourceApp` 传入原客户端中同时包含 `ChatGPT.exe` 和 `resources/app.asar` 的目录。安装命令加 `-SkipShortcut` 可以跳过创建桌面快捷方式。
 
-## 更新与恢复
+## 源码安装的更新与恢复
 
 - **更新组件**：运行 `git pull --ff-only` 和 `pnpm --dir windows install --frozen-lockfile`。退出测试副本，将 `.local/windows-sidebar-client` 移到备份位置，再运行安装命令。这样可以保留上一份测试副本及其还原备份。
 - **官方客户端升级后**：测试副本仍对应生成时的版本。退出并移走旧测试副本，再运行安装命令。新版结构兼容时会自动生成补丁，结构不兼容时请提交版本号和报错。
@@ -56,3 +66,5 @@ node windows/server.mjs --demo
 ```
 
 演示服务使用示例数据，在本机浏览器预览早期 Web 原型。真实客户端侧栏使用 `windows/patch` 中的原生界面补丁。
+
+使用 Inno Setup 6.7.4 构建安装包。在安装锁定依赖后，从仓库根目录运行 `./windows/setup/Build-Installer.ps1 -Compiler '<ISCC.exe 路径>'`，生成的 EXE 和 SHA-256 文件在 `.local/windows-package`。构建脚本会下载并校验固定版本的 Node.js x64 运行时。
