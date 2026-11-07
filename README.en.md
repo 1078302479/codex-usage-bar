@@ -3,7 +3,7 @@
   <h1>CodexUsageBar</h1>
   <p>A native macOS menu bar app for Codex quota, reset times, and token activity.</p>
   <p><a href="README.md">简体中文</a> · <strong>English</strong></p>
-  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">Download for macOS</a> · <a href="#download-and-install-on-windows">Download for Windows</a> · <a href="#build-from-source">Build from source</a> · <a href="docs/architecture.md">Architecture</a></p>
+  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS release</a> · <a href="https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0">Windows release</a> · <a href="#download-and-install-on-windows">Windows install guide</a> · <a href="#build-from-source">Build from source</a> · <a href="docs/architecture.md">Architecture</a></p>
 </div>
 
 ## Download and install on Windows

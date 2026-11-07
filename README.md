@@ -4,7 +4,7 @@
   <p>在 macOS 菜单栏查看 Codex 剩余额度、重置时间与 Token 活动。</p>
   <p>A native macOS menu bar app for Codex quota, reset times, and token activity.</p>
   <p><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
-  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">下载 macOS 版</a> · <a href="#windows-下载与安装">下载 Windows 版</a> · <a href="#从源码构建">从源码构建</a> · <a href="docs/architecture.md">技术说明</a></p>
+  <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS 下载页</a> · <a href="https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0">Windows 下载页</a> · <a href="#windows-下载与安装">Windows 安装说明</a> · <a href="#从源码构建">从源码构建</a> · <a href="docs/architecture.md">技术说明</a></p>
 </div>
 
 ## Windows 下载与安装
