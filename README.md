@@ -1,3 +1,7 @@
+> **Windows 版独立分支** · [安装和升级说明](windows/README.md) · [English](windows/README.en.md)
+>
+> 本分支提供 Windows 客户端侧栏额度和重置卡组件。下方为 macOS 项目说明，macOS 开发与发布见 [main](https://github.com/1078302479/codex-usage-bar/tree/main)。
+
 <div align="center">
   <img src="docs/images/app-icon.png" width="128" alt="CodexUsageBar icon">
   <h1>CodexUsageBar</h1>

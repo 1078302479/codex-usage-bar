@@ -13,3 +13,4 @@ build/
 .env.*
 !.env.example
 *.log
+/windows/node_modules/

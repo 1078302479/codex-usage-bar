@@ -1,3 +1,7 @@
+> **Windows branch** · [Installation and updates](windows/README.en.md) · [简体中文](windows/README.md)
+>
+> This branch contains the Windows sidebar quota and reset-credit component. The macOS project is described below and maintained on [main](https://github.com/1078302479/codex-usage-bar/tree/main).
+
 <div align="center">
   <img src="docs/images/app-icon.png" width="128" alt="CodexUsageBar icon">
   <h1>CodexUsageBar</h1>

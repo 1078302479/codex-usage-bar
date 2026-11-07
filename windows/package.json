@@ -1,0 +1,17 @@
+{
+  "name": "codex-sidebar-quota",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "preview": "node server.mjs --demo",
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "acorn": "^8.19.0"
+  }
+}
