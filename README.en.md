@@ -6,7 +6,7 @@
   <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS release</a> · <a href="#screenshots">macOS screenshots</a> · <a href="#build-from-source">Build from source</a> · <a href="docs/architecture.md">Architecture</a></p>
 </div>
 
-The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.1)
+The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.2)
 
 v0.1.6 includes two-account monitoring and one-click switching to the alternate account with a client restart. See [account switching](docs/account-switch.md).
 
