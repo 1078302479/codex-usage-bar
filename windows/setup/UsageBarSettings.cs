@@ -5,6 +5,11 @@ using System.Windows.Forms;
 
 internal sealed class UsageBarSettings : Form
 {
+    private static readonly Color Canvas = SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(244, 247, 252);
+    private static readonly Color Card = SystemColors.Window;
+    private static readonly Color Ink = SystemInformation.HighContrast ? SystemColors.WindowText : Color.FromArgb(24, 38, 61);
+    private static readonly Color Muted = SystemInformation.HighContrast ? SystemColors.WindowText : Color.FromArgb(75, 94, 122);
+    private static readonly Color Accent = SystemInformation.HighContrast ? SystemColors.Highlight : Color.FromArgb(31, 81, 183);
     private readonly string installed = CodexUsageBar.InstalledVersion();
     private readonly CheckBox autoCheck = new CheckBox { Text = "启动时自动检查 Windows 版更新", AutoSize = true };
     private readonly CheckBox shortQuota = new CheckBox { Text = "短周期剩余额度（通常为 5 小时）", AutoSize = true };
@@ -15,30 +20,54 @@ internal sealed class UsageBarSettings : Form
     private readonly Button check = ActionButton("检查更新");
     private readonly Button download = ActionButton("下载安装");
     private readonly Label updateStatus = TextLabel("可以手动检查 GitHub 上的 Windows 版本。");
-    private readonly Label saveStatus = TextLabel("显示设置在完全退出并重新打开 Codex UsageBar 后生效。");
+    private readonly Label saveStatus = TextLabel("保存后可一键重启 Codex 以应用显示设置。");
+    private readonly Button save = ActionButton("保存设置");
+    private readonly Button restart = ActionButton("重启 Codex");
     private CodexUsageBar.Update available;
     private bool downloading;
+    private bool saving;
 
     internal UsageBarSettings()
     {
+#if USAGEBAR_SMOKE
+        Text = "Codex UsageBar 设置（隔离测试）";
+#else
         Text = "Codex UsageBar 设置";
+#endif
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         Font = new Font("Segoe UI", 10);
+        BackColor = Canvas;
+        ForeColor = Ink;
         AutoScaleMode = AutoScaleMode.Font;
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        Padding = new Padding(16);
+        Padding = new Padding(22, 18, 22, 16);
 
-        var title = TextLabel("Codex UsageBar");
-        title.Font = new Font(Font.FontFamily, 16, FontStyle.Bold);
-        var updates = Section("在线更新", TextLabel("当前版本  v" + installed),
-            Row(check, download), updateStatus, autoCheck);
-        var display = Section("侧栏显示", shortQuota, weeklyQuota, resetTimes, resetCards, expandCards);
+        var eyebrow = TextLabel("CODEX USAGEBAR   /   WINDOWS");
+        eyebrow.ForeColor = Accent;
+        eyebrow.Font = new Font(Font.FontFamily, 9, FontStyle.Bold);
+        var title = TextLabel("偏好设置");
+        title.ForeColor = Ink;
+        title.Font = new Font(Font.FontFamily, 21, FontStyle.Bold);
+        var version = TextLabel("v" + installed);
+        version.BackColor = Card;
+        version.ForeColor = Accent;
+        version.Padding = new Padding(9, 4, 9, 4);
+        version.Margin = new Padding(12, 12, 0, 0);
+        var description = TextLabel("自定义 Codex 侧栏，或检查 Windows 版更新。");
+        description.Margin = new Padding(3, 1, 3, 12);
+        var updates = Section("软件更新", "管理 Windows 版更新提醒。",
+            autoCheck, Row(check, download), updateStatus);
+        var display = Section("侧栏显示", "选择侧栏和悬停弹框中显示的内容。",
+            shortQuota, weeklyQuota, resetTimes, resetCards, expandCards);
         var restore = ActionButton("恢复默认");
-        var save = ActionButton("保存设置");
-        var body = Column(title, updates, display, saveStatus, Row(save, restore));
+        save.BackColor = Accent;
+        save.ForeColor = SystemInformation.HighContrast ? SystemColors.HighlightText : Color.White;
+        save.FlatAppearance.BorderSize = 0;
+        var body = Column(eyebrow, Row(title, version), description, display, updates, saveStatus, Row(save, restart, restore));
         body.Dock = DockStyle.Fill;
         Controls.Add(body);
 
@@ -53,18 +82,31 @@ internal sealed class UsageBarSettings : Form
             SetControls(new CodexUsageBar.Preferences());
             saveStatus.Text = "已恢复默认选项，点击「保存设置」应用。";
         };
-        save.Click += (sender, args) => Save();
+        save.Click += async (sender, args) => await Save();
+        restart.Click += async (sender, args) =>
+        {
+            if (saving || downloading) return;
+            SetSaving(true);
+            try { await RestartAndReport(); }
+            finally { SetSaving(false); }
+        };
         SetControls(CodexUsageBar.ReadPreferences());
     }
 
     private static Label TextLabel(string text)
     {
-        return new Label { Text = text, AutoSize = true, MaximumSize = new Size(420, 0), Margin = new Padding(3, 4, 3, 4) };
+        return new Label { Text = text, AutoSize = true, ForeColor = Muted, MaximumSize = new Size(466, 0), Margin = new Padding(3, 4, 3, 4) };
     }
 
     private static Button ActionButton(string text)
     {
-        return new Button { Text = text, AutoSize = true, MinimumSize = new Size(86, 30) };
+        var button = new Button
+        {
+            Text = text, AutoSize = true, MinimumSize = new Size(94, 34), Padding = new Padding(8, 2, 8, 2),
+            FlatStyle = FlatStyle.Flat, BackColor = Card, ForeColor = Ink, UseVisualStyleBackColor = false,
+        };
+        button.FlatAppearance.BorderColor = SystemInformation.HighContrast ? SystemColors.WindowText : Color.FromArgb(202, 214, 233);
+        return button;
     }
 
     private static FlowLayoutPanel Row(params Control[] items)
@@ -81,16 +123,17 @@ internal sealed class UsageBarSettings : Form
         return panel;
     }
 
-    private static GroupBox Section(string title, params Control[] items)
+    private FlowLayoutPanel Section(string title, string description, params Control[] items)
     {
-        var section = new GroupBox
-        {
-            Text = title, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(12, 9, 12, 9), MinimumSize = new Size(445, 0)
-        };
-        var body = Column(items);
-        body.Dock = DockStyle.Fill;
-        section.Controls.Add(body);
+        var heading = TextLabel(title);
+        heading.ForeColor = Ink;
+        heading.Font = new Font(Font.FontFamily, 12, FontStyle.Bold);
+        var section = Column(heading, TextLabel(description));
+        section.BackColor = Card;
+        section.Padding = new Padding(14, 10, 14, 10);
+        section.MinimumSize = new Size(475, 0);
+        section.Margin = new Padding(0, 0, 0, 10);
+        section.Controls.AddRange(items);
         return section;
     }
 
@@ -111,8 +154,11 @@ internal sealed class UsageBarSettings : Form
         expandCards.Enabled = resetCards.Checked;
     }
 
-    private void Save()
+    private async Task Save()
     {
+        if (saving || downloading) return;
+        bool saved = false;
+        SetSaving(true);
         try
         {
             CodexUsageBar.SavePreferences(new CodexUsageBar.Preferences
@@ -120,11 +166,42 @@ internal sealed class UsageBarSettings : Form
                 autoCheckUpdates = autoCheck.Checked, showShort = shortQuota.Checked, showWeekly = weeklyQuota.Checked,
                 showResetTimes = resetTimes.Checked, showResetCredits = resetCards.Checked, expandCards = expandCards.Checked
             });
-            saveStatus.Text = "已保存。完全退出并重新打开 Codex UsageBar 后应用显示设置。";
+            saved = true;
+            saveStatus.Text = "设置已保存。";
+            if (await Task.Run(() => CodexUsageBar.DisplayChangesPending()))
+            {
+                saveStatus.Text = "设置已保存，等待重启 Codex。";
+                await RestartAndReport();
+            }
         }
         catch (Exception error)
         {
-            MessageBox.Show(this, "保存设置失败。\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            var message = saved ? "设置已保存，暂时无法确认是否需要重启。" : "保存设置失败。";
+            MessageBox.Show(this, message + "\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            SetSaving(false);
+        }
+    }
+
+    private void SetSaving(bool busy)
+    {
+        saving = busy;
+        save.Enabled = restart.Enabled = !busy;
+    }
+
+    private async Task RestartAndReport()
+    {
+        if (!await CodexUsageBar.ConfirmRestart(this)) return;
+        try
+        {
+            saveStatus.Text = await Task.Run(() => CodexUsageBar.DisplayChangesPending())
+                ? "Codex 已打开，显示设置仍等待应用。" : "Codex 已重启，显示设置已生效。";
+        }
+        catch (Exception)
+        {
+            saveStatus.Text = "Codex 已重启，暂时无法确认显示设置状态。";
         }
     }
 
@@ -136,22 +213,26 @@ internal sealed class UsageBarSettings : Form
         try
         {
             available = await Task.Run(() => CodexUsageBar.WithUpdateLock(() => CodexUsageBar.FindUpdate(installed)));
+            if (IsDisposed) return;
             updateStatus.Text = available == null ? "已经是最新版本。" : "发现新版 v" + available.version + "。";
         }
         catch (Exception error)
         {
-            updateStatus.Text = "暂时无法检查更新。 " + error.Message;
+            if (!IsDisposed) updateStatus.Text = "暂时无法检查更新。 " + error.Message;
         }
         finally
         {
-            check.Enabled = true;
-            download.Enabled = available != null;
+            if (!IsDisposed)
+            {
+                check.Enabled = true;
+                download.Enabled = available != null;
+            }
         }
     }
 
     private async Task DownloadUpdate()
     {
-        if (available == null) return;
+        if (available == null || saving || downloading) return;
         var choice = MessageBox.Show(this, "下载 v" + available.version +
             " 并打开安装向导？安装前请保存工作并退出 Codex UsageBar。",
             Text, MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2);
@@ -180,7 +261,7 @@ internal sealed class UsageBarSettings : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (downloading && e.CloseReason == CloseReason.UserClosing) e.Cancel = true;
+        if ((downloading || saving) && e.CloseReason == CloseReason.UserClosing) e.Cancel = true;
         base.OnFormClosing(e);
     }
 }

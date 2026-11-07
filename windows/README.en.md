@@ -9,7 +9,7 @@ This experimental community build generates a separate client copy from your ins
 ## Install
 
 1. Install the official Microsoft Store edition of Codex on Windows 11 x64.
-2. Download and run [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.3/CodexUsageBar-Windows-x64-Setup.exe).
+2. Download and run [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.4/CodexUsageBar-Windows-x64-Setup.exe).
 3. Save your work and exit Codex, then open **Codex UsageBar** from the desktop or Start menu.
 
 Setup includes Node.js and dependencies. Leave several GB free for the locally generated client copy. Setup is unsigned and checks the Store client for compatibility. It was tested with internal build `26.1103.31037` in Store package `26.1103.3517.0`.
@@ -22,9 +22,11 @@ Rerun setup after a Store client update to rebuild the local copy. Use **Setting
 
 ## Settings window
 
-Open **Codex UsageBar Settings** from Start. It shows the installed version, checks for and downloads Windows updates on demand, and lets you toggle the startup check.
+After launching Codex UsageBar, click its notification-area icon to open preferences. The icon may be under the hidden-icons chevron. You can also open **Codex UsageBar Settings** from Start. Closing preferences leaves the icon running. Right-click it to open or restart Codex, or exit the tray.
 
-Choose short-window quota, weekly quota, reset times and countdowns, reset credits, and whether card details start expanded. Save your settings, then fully quit and reopen Codex UsageBar. Applying display changes may take a moment.
+Preferences show the installed version and let you check for and download updates or toggle startup checks. Choose short-window quota, weekly quota, reset times and countdowns, reset credits, and whether card details start expanded.
+
+After saving a display change, confirm the restart to apply it. Codex closes and reopens automatically. If you postpone, the settings apply on the next full launch. Before running an installer manually or uninstalling, quit Codex and choose **Exit tray** from the notification icon menu.
 
 ## Install from source
 

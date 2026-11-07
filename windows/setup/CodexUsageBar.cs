@@ -43,22 +43,15 @@ internal static class CodexUsageBar
             if (args.Length == 0)
             {
                 Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
                 WithLock(Launch);
-                if (ReadPreferences().autoCheckUpdates) CheckForUpdate();
+                if (!ReadPreferences().autoCheckUpdates || !CheckForUpdate()) UsageBarTray.Run(Root, false);
             }
-            else if (args.Length == 1 && args[0] == "settings")
+            else if (args.Length == 1 && (args[0] == "settings" || args[0] == "tray"))
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                bool first;
-                using (var settings = new Mutex(true, @"Local\CodexUsageBarSettings", out first))
-                {
-                    if (first)
-                    {
-                        try { Application.Run(new UsageBarSettings()); }
-                        finally { settings.ReleaseMutex(); }
-                    }
-                }
+                UsageBarTray.Run(Root, args[0] == "settings");
             }
             else if (args[0] == "install" && args.Length == 2)
             {
@@ -82,7 +75,8 @@ internal static class CodexUsageBar
         }
         catch (Exception error)
         {
-            if (args.Length == 0 || args[0] == "settings") MessageBox.Show(error.Message, Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (args.Length == 0 || args[0] == "settings" || args[0] == "tray")
+                MessageBox.Show(error.Message, Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             if (args.Length == 2 && args[0] == "install")
             {
                 try { File.WriteAllText(args[1], error.Message + Environment.NewLine); } catch (IOException) { }
@@ -124,15 +118,14 @@ internal static class CodexUsageBar
 
     private static void WithLock(Action action)
     {
+        using (AcquireClientLock()) action();
+    }
+
+    private static FileStream AcquireClientLock()
+    {
         Directory.CreateDirectory(Local);
         string path = Path.Combine(Local, "windows-sidebar-launch.lock");
-        FileStream lease = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        try { action(); }
-        finally
-        {
-            lease.Dispose();
-            File.Delete(path);
-        }
+        return new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.DeleteOnClose);
     }
 
     private static string ProcessPath(Process process)
@@ -172,7 +165,7 @@ internal static class CodexUsageBar
         }
     }
 
-    private static void Launch()
+    private static bool HasRunningClient()
     {
         var clients = Process.GetProcessesByName("ChatGPT");
         try
@@ -180,14 +173,86 @@ internal static class CodexUsageBar
             foreach (Process process in clients)
             {
                 if (!String.Equals(ProcessPath(process), ClientExe, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(ExitMessage);
+                    throw new InvalidOperationException("当前正在运行另一套 Codex。请从正在使用的 UsageBar 版本打开设置，或先退出另一套 Codex。");
             }
+            return clients.Length != 0;
         }
         finally { foreach (Process process in clients) process.Dispose(); }
-        if (clients.Length == 0 && RunNode("packaged-client.mjs", "display-pending").Trim() == "true")
+    }
+
+    private static void Launch()
+    {
+        if (!HasRunningClient() && DisplayChangesPending())
             ApplyDisplaySettings();
         RunNode("packaged-client.mjs", "verify");
         Process.Start(new ProcessStartInfo(ClientExe) { WorkingDirectory = Client, UseShellExecute = true });
+    }
+
+    internal static bool DisplayChangesPending()
+    {
+        return RunNode("packaged-client.mjs", "display-pending").Trim() == "true";
+    }
+
+    private static Process[] RunningCopy()
+    {
+        return Process.GetProcessesByName("ChatGPT").Where(process =>
+        {
+            if (String.Equals(ProcessPath(process), ClientExe, StringComparison.OrdinalIgnoreCase)) return true;
+            process.Dispose();
+            return false;
+        }).ToArray();
+    }
+
+    private static void WaitForCopy(bool opening)
+    {
+        var timer = Stopwatch.StartNew();
+        while (timer.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            var copy = RunningCopy();
+            try
+            {
+                if (opening ? copy.Any(process => process.MainWindowHandle != IntPtr.Zero) : copy.Length == 0) return;
+            }
+            finally { foreach (var process in copy) process.Dispose(); }
+            Thread.Sleep(300);
+        }
+        throw new InvalidOperationException(opening ? "暂时未看到新版窗口，请从托盘重新打开 Codex。" : "Codex 仍在退出，请稍后重试。");
+    }
+
+    internal static async Task<bool> ConfirmRestart(IWin32Window owner)
+    {
+        try
+        {
+            HasRunningClient();
+            var choice = MessageBox.Show(owner, "重启会暂时关闭 Codex UsageBar。请先保存当前工作，确认后会自动重新打开。",
+                "重新启动 Codex", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+            if (choice != DialogResult.Yes) return false;
+            using (AcquireClientLock())
+            {
+                HasRunningClient();
+                await Task.Run(() =>
+                {
+                    var copy = RunningCopy();
+                    try
+                    {
+                        var main = copy.FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero)
+                            ?? copy.OrderBy(process => process.StartTime).FirstOrDefault();
+                        if (main != null) ClientRestart.Request(main);
+                    }
+                    finally { foreach (var process in copy) process.Dispose(); }
+                    WaitForCopy(false);
+                });
+                Launch();
+                await Task.Run(() => WaitForCopy(true));
+            }
+            return true;
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show(owner, "重启未完成，已保存的设置可在下次打开时应用。\n\n" + error.Message,
+                Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
     }
 
     private static void ApplyDisplaySettings()
@@ -353,6 +418,7 @@ internal static class CodexUsageBar
             RunNode("update-release.mjs", "download", update.version, update.sha256, update.size.ToString(CultureInfo.InvariantCulture), setup);
             if (InstalledVersion() != installed) throw new InvalidOperationException("本机版本已改变，请重新检查。");
             using (Process installer = Process.Start(new ProcessStartInfo(setup) { UseShellExecute = true })) { }
+            UsageBarTray.SignalExit(Root);
         }
         catch
         {
@@ -361,12 +427,12 @@ internal static class CodexUsageBar
         }
     }
 
-    private static void CheckForUpdate()
+    private static bool CheckForUpdate()
     {
         bool accepted = false;
         try
         {
-            WithUpdateLock(() =>
+            return WithUpdateLock(() =>
             {
                 if (!File.Exists(VersionFile)) return false;
                 string installed = InstalledVersion();
@@ -384,6 +450,7 @@ internal static class CodexUsageBar
         {
             if (accepted) MessageBox.Show("更新包下载、校验或启动失败。可从 GitHub 下载 Windows 安装包。",
                 Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
         }
     }
 }

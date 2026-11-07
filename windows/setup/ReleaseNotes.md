@@ -8,7 +8,7 @@
 
 从 v0.1.2 起，安装与启动使用项目自有的 Windows 程序，安装包移除了 PowerShell 脚本。安装向导会提示内嵌侧栏副本的签名影响。[签名与拦截复核说明](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/setup/Security.md)
 
-从 v0.1.3 起，开始菜单新增 **Codex UsageBar Settings**。可手动检查更新、关闭启动时检查，并选择侧栏显示内容。保存显示设置后，完全退出并重新打开 Codex UsageBar 即可应用。
+从 v0.1.4 起，任务栏右下角新增常驻托盘入口，设置窗口采用新的布局。点击图标可打开偏好设置，右键可打开或重启 Codex。保存显示选项后，确认重启即可自动关闭、应用设置并重新打开 Codex。
 
 从 v0.1.1 起，每次通过桌面或开始菜单打开 Codex UsageBar，都会在后台检查 Windows 更新。有新版时可以确认下载，校验 SHA-256 后会打开安装向导。安装前请保存工作并退出当前 Codex UsageBar。v0.1.0 用户需先手动运行一次新版安装包。
 
@@ -26,7 +26,7 @@ After setup, save your work, exit Codex, and open **Codex UsageBar** from the de
 
 Starting with v0.1.2, the setup and shortcuts use the project's Windows launcher. The installer explains the signature impact on the separate Codex copy.
 
-Starting with v0.1.3, open **Codex UsageBar Settings** from Start to check for updates or change which sidebar details appear. Save your display settings, then fully quit and reopen Codex UsageBar to apply them.
+Starting with v0.1.4, click the notification-area icon to open the redesigned preferences window. Right-click to open or restart Codex. Confirm the restart after saving display changes to apply them automatically.
 
 Starting with v0.1.1, each shortcut launch checks for Windows updates in the background. Confirm the prompt to download and verify the installer, then follow the setup wizard. Upgrade from v0.1.0 by running the new installer once.
 
