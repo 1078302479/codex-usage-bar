@@ -9,10 +9,12 @@
 ## 安装
 
 1. 在 Windows 11 x64 上先通过 Microsoft Store 安装官方 Codex。
-2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.1/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
+2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.2/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
 3. 保存工作并退出当前 Codex，从桌面或开始菜单打开 **Codex UsageBar**。
 
 安装包自带 Node.js 和所需依赖。安装过程会用本机 Store 客户端生成副本，需要预留几 GB 磁盘空间。已实测客户端内部版本 `26.1103.31037`，对应 Store 包 `26.1103.3517.0`。遇到其他客户端版本时，安装程序会先做兼容性检查。安装包尚未签名，Windows 可能显示发布者未知。
+
+从 v0.1.2 起，安装和快捷方式由项目自有的 Windows 启动器处理。安装向导会说明生成副本对原厂签名的影响。[代码签名与安全软件复核说明](setup/Security.md)
 
 从 v0.1.1 起，桌面和开始菜单快捷方式会在打开客户端后后台检查 GitHub 上的 Windows 版本。发现新版时会询问是否下载，校验 SHA-256 后打开安装向导。安装前请保存工作并退出当前 Codex UsageBar。v0.1.0 用户需先手动运行一次新版 EXE。
 

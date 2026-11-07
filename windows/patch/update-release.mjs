@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { rename, rm } from 'node:fs/promises';
+import { rename, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -98,6 +98,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     } else if (command === 'download' && args.length === 4) {
       const [version, sha256, size, destination] = args;
       await downloadWindowsUpdate({ version, sha256, size: Number(size) }, destination);
+      if (process.platform === 'win32') {
+        await writeFile(destination + ':Zone.Identifier', '[ZoneTransfer]\r\nZoneId=3\r\n');
+      }
     } else {
       throw new Error('Invalid update command');
     }
