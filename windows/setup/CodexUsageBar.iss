@@ -54,6 +54,7 @@ Type: files; Name: "{app}\windows\patch\Check-SidebarUpdate.ps1"
 [Icons]
 Name: "{userdesktop}\Codex UsageBar"; Filename: "{app}\CodexUsageBar.exe"; WorkingDir: "{app}"; IconFilename: "{app}\.local\windows-sidebar-client\ChatGPT.exe"; Tasks: desktopicon
 Name: "{userprograms}\Codex UsageBar"; Filename: "{app}\CodexUsageBar.exe"; WorkingDir: "{app}"; IconFilename: "{app}\.local\windows-sidebar-client\ChatGPT.exe"; Tasks: startmenuicon
+Name: "{userprograms}\Codex UsageBar Settings"; Filename: "{app}\CodexUsageBar.exe"; Parameters: "settings"; WorkingDir: "{app}"; Tasks: startmenuicon
 #endif
 
 [Code]
@@ -83,7 +84,7 @@ begin
   if not FileExists(Launcher) then
     ExtractTemporaryFile('CodexUsageBar.exe');
   if not CheckClientClosed(Launcher) then
-    Result := 'Exit Codex UsageBar from the File menu or system tray, then try again.';
+    Result := 'Exit Codex UsageBar and close its Settings window, then try again.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -119,7 +120,7 @@ function InitializeUninstall: Boolean;
 begin
   Result := CheckClientClosed(ExpandConstant('{app}\CodexUsageBar.exe'));
   if not Result then
-    SuppressibleMsgBox('Exit Codex UsageBar from the File menu or system tray, then uninstall again.',
+    SuppressibleMsgBox('Exit Codex UsageBar and close its Settings window, then uninstall again.',
       mbError, MB_OK, IDOK);
 end;
 

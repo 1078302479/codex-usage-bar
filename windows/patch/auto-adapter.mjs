@@ -151,7 +151,7 @@ export function analyzeRenderer(source) {
   return result;
 }
 
-export function transformAuto(source, analysis = analyzeRenderer(source), resetCredits = null) {
+export function transformAuto(source, analysis = analyzeRenderer(source), resetCredits = null, display = null) {
   // Reanalyze instead of accepting stale offsets or identifiers from a report.
   if (JSON.stringify(analysis) !== JSON.stringify(analyzeRenderer(source))) throw new Error('Stale renderer analysis');
   const binding = '__UsageBarAutoSidebar';
@@ -161,7 +161,7 @@ export function transformAuto(source, analysis = analyzeRenderer(source), resetC
   const runtimeModules = resetCredits?.runtimeModules ?? [];
   const loader = resetCredits ? `()=>Promise.all(${JSON.stringify(chunks)}.map(id=>${analysis.require}.e(id))).then(()=>{if(${analysis.require}.m&&${JSON.stringify(runtimeModules)}.some(id=>!${analysis.require}.m[id]))throw new Error("reset-credit-runtime-dependency");return ${analysis.require}(${JSON.stringify(resetCredits.moduleId)})[${JSON.stringify(resetCredits.exportName)}]})` : 'null';
   const creditView = `(${createResetCreditView.toString()})(${analysis.react},${analysis.jsx},${resetCreditPresentation.toString()})`;
-  const factory = `(${createSidebarQuota.toString()})(${analysis.react},${analysis.jsx},${analysis.menu},${nativeWindowData.toString()},${loader},${creditView})`;
+  const factory = `(${createSidebarQuota.toString()})(${analysis.react},${analysis.jsx},${analysis.menu},${nativeWindowData.toString()},${loader},${creditView},${JSON.stringify(display)})`;
   const originalReturn = source.slice(analysis.returnStart, analysis.returnEnd);
   const title = analysis.intl ? `${analysis.intl}.formatMessage({id:"settings.usage.resets.title",defaultMessage:"Usage limit resets"})` : 'null';
   const navigation = analysis.manageUsage ? `,onManageUsage:${analysis.manageUsage},resetHeading:${title}` : '';

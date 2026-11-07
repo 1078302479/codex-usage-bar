@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Compiler,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.2',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.3',
     [string]$SignTool,
     [ValidatePattern('^[a-fA-F0-9]{40}$')][string]$SigningThumbprint,
     [switch]$SmokeTest
@@ -53,8 +53,8 @@ try {
     }
     $launcher = Join-Path $payload 'CodexUsageBar.exe'
     $cscArgs = @('/nologo', '/target:winexe', '/platform:x64', '/optimize+', '/codepage:65001',
-        '/reference:System.Windows.Forms.dll', '/reference:System.Web.Extensions.dll', "/out:$launcher")
-    & $csc @cscArgs (Join-Path $PSScriptRoot 'CodexUsageBar.cs')
+        '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll', '/reference:System.Web.Extensions.dll', "/out:$launcher")
+    & $csc @cscArgs (Join-Path $PSScriptRoot 'CodexUsageBar.cs') (Join-Path $PSScriptRoot 'UsageBarSettings.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Windows launcher compilation failed.' }
     $options = @("/DAppVersion=$Version", "/DPayloadDir=$payload", "/O$outputDir")
     if ($SmokeTest) { $options += '/DSmokeTest' }

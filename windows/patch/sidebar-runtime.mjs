@@ -30,8 +30,14 @@ export function nativeWindowData(usage, observedAt, now) {
   };
 }
 
-export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsHook = null, ResetCreditView = null) {
+export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsHook = null, ResetCreditView = null, display = null) {
   const h = jsx.jsx;
+  const showShort = display?.showShort !== false;
+  const showWeekly = display?.showWeekly !== false;
+  const hasQuota = showShort || showWeekly;
+  const showResetTimes = hasQuota && display?.showResetTimes !== false;
+  const showCredits = display?.showResetCredits !== false && Boolean(ResetCreditView);
+  if (!hasQuota && !showCredits) return function HiddenUsageBar() { return null; };
   function locateResetHeading(title) {
     const labels = new Set([title, '使用限额重置', 'Usage limit resets'].filter(Boolean));
     let attempts = 0;
@@ -45,8 +51,10 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
       }
     }, 100);
   }
-  const creditProps = (usage, now) => ({ summaryCount: usage?.rate_limit_reset_credits?.available_count, now });
-  const makeCreditsQuery = () => loadResetCreditsHook && ResetCreditView ? React.lazy(async () => {
+  const creditProps = (usage, now) => ({
+    summaryCount: usage?.rate_limit_reset_credits?.available_count, now, expandCards: display?.expandCards !== false,
+  });
+  const makeCreditsQuery = () => showCredits && loadResetCreditsHook ? React.lazy(async () => {
     try {
       const useCredits = await loadResetCreditsHook();
       if (typeof useCredits !== 'function') throw new Error('Reset-credit query unavailable');
@@ -90,6 +98,8 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
       return () => clearInterval(timer);
     }, []);
     const data = model(usage, seen.current.at, now);
+    const windows = data.windows.map((window, index) => ({ ...window, index }))
+      .filter(window => window.index === 0 ? showShort : showWeekly);
     const text = window => window.remaining === null || window.expired ? '--'
       : `${window.remaining}%${data.stale ? '*' : ''}`;
     const tone = (window, index) => window.remaining !== null && window.remaining <= 5 ? '#c94545'
@@ -107,33 +117,34 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
     };
     const details = h('div', { className: 'px-row-x py-row-y text-sm text-default text-start',
       children: [h('div', { key: 'heading', className: 'mb-4 flex items-center justify-between gap-3', children: [
-        h('span', { key: 'title', id: 'usagebar-quota-heading', className: 'font-medium', children: 'Codex 剩余额度' }),
-        h('span', { key: 'zone', className: 'text-xs text-secondary', children: '北京时间' }),
+        h('span', { key: 'title', id: 'usagebar-quota-heading', className: 'font-medium', children: hasQuota ? 'Codex 剩余额度' : 'Codex 重置卡' }),
+        showResetTimes || showCredits ? h('span', { key: 'zone', className: 'text-xs text-secondary', children: '北京时间' }) : null,
       ] }),
-        ...data.windows.map((window, index) => h('div', { key: index, className: 'mb-4', children: [
+        ...windows.map(window => h('div', { key: window.index, className: 'mb-4', children: [
           h('div', { key: 'row', className: 'mb-1.5 flex items-center justify-between gap-3', children: [
             h('span', { key: 'label', children: `${window.label}额度` }),
             h('span', { key: 'remaining', className: 'font-medium tabular-nums', children: text(window) }),
           ] }),
           window.remaining !== null && !window.expired ? h('div', { key: 'track', className: 'mb-1.5 h-1 overflow-hidden rounded-full bg-surface-secondary', children:
             h('div', { className: 'h-full rounded-full bg-text', style: { width: `${window.remaining}%` } }) }) : null,
-          h('div', { key: 'reset', className: 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-secondary leading-relaxed',
-            children: resetParts(window).map((part, index) => h('span', { key: index, style: { whiteSpace: 'nowrap' }, children: part })) }),
+          showResetTimes ? h('div', { key: 'reset', className: 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-secondary leading-relaxed',
+            children: resetParts(window).map((part, index) => h('span', { key: index, style: { whiteSpace: 'nowrap' }, children: part })) }) : null,
         ] })),
         CreditsQuery ? h(React.Suspense, { key: 'credits', fallback: h(ResetCreditView, { ...creditProps(usage, now), response: null, loading: true, onUseReset }),
           children: h(CreditsQuery, { key: usage?.account_id ?? usage?.user_id ?? 'current', usage, now, onRetry: retryCredits, onUseReset }) })
-          : ResetCreditView ? h(ResetCreditView, { key: 'credits', ...creditProps(usage, now), response: null, onUseReset }) : null,
-        !data.available || data.stale ? h('div', { key: 'footer', className: 'border-t border-default pt-2 text-xs text-secondary',
+          : showCredits ? h(ResetCreditView, { key: 'credits', ...creditProps(usage, now), response: null, onUseReset }) : null,
+        hasQuota && (!data.available || data.stale) ? h('div', { key: 'footer', className: 'border-t border-default pt-2 text-xs text-secondary',
           children: !data.available ? '客户端尚未提供额度数据' : '数据超过5分钟未更新 · * 标记旧值' }) : null,
       ] });
-    const trigger = h('button', { type: 'button', 'data-usagebar-sidebar': '1', 'aria-label': `Codex 剩余额度：${data.windows.map(w => `${w.label} ${text(w)}`).join('，')}。悬停查看重置时间`,
+    const trigger = h('button', { type: 'button', 'data-usagebar-sidebar': '1',
+      'aria-label': hasQuota ? `Codex 剩余额度：${windows.map(w => `${w.label} ${text(w)}`).join('，')}。悬停查看详情` : 'Codex 重置卡，悬停查看详情',
         style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, width: 44,
           padding: '7px 2px', border: 0, borderRadius: 10, background: 'var(--color-surface-hover, #9099a310)',
           cursor: 'default', lineHeight: 1.2, fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums', flexShrink: 0 },
-        children: data.windows.map((window, index) => h('span', { key: index, style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }, children: [
+        children: hasQuota ? windows.map(window => h('span', { key: window.index, style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }, children: [
           h('span', { key: 'label', style: { fontSize: 9, color: 'var(--color-text-secondary, #888)' }, children: window.label }),
-          h('span', { key: 'value', style: { fontSize: 12, fontWeight: 600, color: tone(window, index) }, children: text(window) }),
-        ] })),
+          h('span', { key: 'value', style: { fontSize: 12, fontWeight: 600, color: tone(window, window.index) }, children: text(window) }),
+        ] })) : h('span', { style: { fontSize: 9, color: 'var(--color-text-secondary, #888)' }, children: '重置卡' }),
       });
     // Match the existing rail menu's surface, width, spacing and theme. The
     // native hover implementation handles pointer travel and keyboard dismissal.

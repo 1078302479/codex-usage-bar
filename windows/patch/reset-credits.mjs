@@ -34,8 +34,8 @@ export function resetCreditPresentation(response, summaryCount, now) {
 
 export function createResetCreditView(React, jsx, model) {
   const h = jsx.jsx;
-  return function ResetCreditView({ response, summaryCount, now, loading, failed, failureReason, errorStatus, onRetry, onUseReset }) {
-    const [expanded, setExpanded] = React.useState(true);
+  return function ResetCreditView({ response, summaryCount, now, loading, failed, failureReason, errorStatus, onRetry, onUseReset, expandCards = true }) {
+    const [expanded, setExpanded] = React.useState(expandCards);
     const data = model(response, summaryCount, now);
     const useButton = () => h('button', { key: 'use', type: 'button', onClick: onUseReset,
       'aria-label': '使用重置卡，打开使用限额重置设置',

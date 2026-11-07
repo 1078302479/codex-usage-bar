@@ -17,7 +17,7 @@ async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
 }
 
-export async function stagePatch(appDirectory, outputDirectory) {
+export async function stagePatch(appDirectory, outputDirectory, display = null) {
   const app = await realpath(appDirectory);
   const output = resolve(outputDirectory);
   // A stage must be new, and must not be inside the installed app.
@@ -30,7 +30,7 @@ export async function stagePatch(appDirectory, outputDirectory) {
   try {
     sourceHeaderSha256 = sha256(archive.headerBytes);
     adapter = await discoverAdapter(archive);
-    transformed = transformAuto(adapter.source, adapter.analysis, adapter.resetCredits);
+    transformed = transformAuto(adapter.source, adapter.analysis, adapter.resetCredits, display);
   } finally { await archive.close(); }
   const syntax = spawnSync(process.execPath, ['--check', '--input-type=module'],
     { input: transformed, encoding: 'utf8', windowsHide: true, timeout: 15000 });
@@ -45,6 +45,7 @@ export async function stagePatch(appDirectory, outputDirectory) {
     createdAt: new Date().toISOString(), targetAsset: adapter.target,
     sourceSha256: adapter.sourceSha256, adaptation: 'AST-validated native rail structure',
     resetCredits: adapter.resetCredits,
+    display,
     signatureImpact: 'Changing the embedded ASAR header hash invalidates ChatGPT.exe Authenticode signature. Integrity validation stays enabled.',
     activation: 'Offline stage only. No installed client files have been modified.',
     files: {

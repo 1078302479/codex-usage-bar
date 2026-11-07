@@ -4,12 +4,14 @@ import { lstat, readFile, readdir, realpath, rename, rm, writeFile } from 'node:
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { activatePatch, checkFiles, loadManifest, stagePatch } from './manage.mjs';
+import { displayPreferences, readDisplayPreferences } from './display-preferences.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const local = join(root, '.local');
 const client = join(local, 'windows-sidebar-client');
 const pointer = join(local, 'windows-sidebar-active-stage.txt');
 const lockName = 'windows-sidebar-launch.lock';
+const preferences = join(local, 'display-settings.json');
 
 async function exists(path) {
   try { await lstat(path); return true; } catch (error) {
@@ -44,7 +46,7 @@ async function install(source) {
   const oldStage = await exists(pointer) ? (await readFile(pointer, 'utf8')).trim() : '';
   let committed = false;
   try {
-    await stagePatch(official, stage);
+    await stagePatch(official, stage, await readDisplayPreferences(preferences));
     const robocopy = join(process.env.SystemRoot, 'System32', 'robocopy.exe');
     const copied = spawnSync(robocopy, [official, candidate, '/E', '/XJ', '/COPY:DAT', '/DCOPY:DAT', '/R:1', '/W:1',
       '/NFL', '/NDL', '/NJH', '/NJS', '/NP'], { windowsHide: true, encoding: 'utf8' });
@@ -92,6 +94,12 @@ try {
   const [command, source] = process.argv.slice(2);
   if (command === 'install' && source) await install(source);
   else if (command === 'verify') await verify();
+  else if (command === 'display-pending') {
+    const stage = (await readFile(pointer, 'utf8')).trim();
+    const manifest = await loadManifest(stage);
+    const requested = await readDisplayPreferences(preferences);
+    console.log(JSON.stringify(displayPreferences(manifest.display)) !== JSON.stringify(requested));
+  }
   else if (command === 'remove') {
     checkClosed(client);
     for (const entry of await readdir(local)) {

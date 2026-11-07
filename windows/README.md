@@ -9,7 +9,7 @@
 ## 安装
 
 1. 在 Windows 11 x64 上先通过 Microsoft Store 安装官方 Codex。
-2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.2/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
+2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.3/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
 3. 保存工作并退出当前 Codex，从桌面或开始菜单打开 **Codex UsageBar**。
 
 安装包自带 Node.js 和所需依赖。安装过程会用本机 Store 客户端生成副本，需要预留几 GB 磁盘空间。已实测客户端内部版本 `26.1103.31037`，对应 Store 包 `26.1103.3517.0`。遇到其他客户端版本时，安装程序会先做兼容性检查。安装包尚未签名，Windows 可能显示发布者未知。
@@ -19,6 +19,12 @@
 从 v0.1.1 起，桌面和开始菜单快捷方式会在打开客户端后后台检查 GitHub 上的 Windows 版本。发现新版时会询问是否下载，校验 SHA-256 后打开安装向导。安装前请保存工作并退出当前 Codex UsageBar。v0.1.0 用户需先手动运行一次新版 EXE。
 
 官方 Codex 更新后，重新运行安装包即可尝试生成对应版本的副本。卸载入口在 **Windows 设置 → 应用 → 已安装的应用 → Codex UsageBar (Windows)**。若安装失败，可在 `%LOCALAPPDATA%\CodexUsageBar-setup.log` 查看原因。
+
+## 设置窗口
+
+从开始菜单打开 **Codex UsageBar Settings**。窗口显示本机版本，可以手动检查、下载 Windows 更新，也可以关闭启动时自动检查。
+
+侧栏选项包括短周期额度、周额度、额度重置时间与倒计时、重置卡，以及是否默认展开卡片明细。点击「保存设置」后，完全退出并重新打开 Codex UsageBar。应用显示设置时可能需要片刻。
 
 ## 从源码安装
 

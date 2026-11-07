@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
@@ -24,6 +25,8 @@ internal static class CodexUsageBar
     private static readonly string Client = Path.Combine(Local, "windows-sidebar-client");
     private static readonly string ClientExe = Path.Combine(Client, "ChatGPT.exe");
     private static readonly string VersionFile = Path.Combine(Local, "windows-sidebar-version.txt");
+    private static readonly string PreferencesFile = Path.Combine(Local, "display-settings.json");
+    private const string UpdateMutex = @"Local\CodexUsageBarWindowsUpdate";
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern int GetPackagesByPackageFamily(string family, ref int count,
@@ -39,8 +42,23 @@ internal static class CodexUsageBar
         {
             if (args.Length == 0)
             {
+                Application.EnableVisualStyles();
                 WithLock(Launch);
-                CheckForUpdate();
+                if (ReadPreferences().autoCheckUpdates) CheckForUpdate();
+            }
+            else if (args.Length == 1 && args[0] == "settings")
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                bool first;
+                using (var settings = new Mutex(true, @"Local\CodexUsageBarSettings", out first))
+                {
+                    if (first)
+                    {
+                        try { Application.Run(new UsageBarSettings()); }
+                        finally { settings.ReleaseMutex(); }
+                    }
+                }
             }
             else if (args[0] == "install" && args.Length == 2)
             {
@@ -49,7 +67,10 @@ internal static class CodexUsageBar
             }
             else if (args[0] == "verify") RunNode("packaged-client.mjs", "verify");
             else if (args[0] == "check-client" && args.Length == 2)
+            {
                 AssertClosed(Path.Combine(args[1], ".local", "windows-sidebar-client"));
+                AssertSettingsClosed(args[1]);
+            }
             else if (args[0] == "check-path" && args.Length == 2) AssertClosed(args[1]);
             else if (args[0] == "remove")
             {
@@ -61,7 +82,7 @@ internal static class CodexUsageBar
         }
         catch (Exception error)
         {
-            if (args.Length == 0) MessageBox.Show(error.Message, Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (args.Length == 0 || args[0] == "settings") MessageBox.Show(error.Message, Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             if (args.Length == 2 && args[0] == "install")
             {
                 try { File.WriteAllText(args[1], error.Message + Environment.NewLine); } catch (IOException) { }
@@ -135,18 +156,75 @@ internal static class CodexUsageBar
         }
     }
 
+    private static void AssertSettingsClosed(string directory)
+    {
+        string launcher = Path.Combine(directory, "CodexUsageBar.exe");
+        using (var self = Process.GetCurrentProcess())
+        {
+            foreach (Process process in Process.GetProcessesByName("CodexUsageBar"))
+            {
+                using (process)
+                {
+                    if (process.Id != self.Id && String.Equals(ProcessPath(process), launcher, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Close the Codex UsageBar Settings window, then try again.");
+                }
+            }
+        }
+    }
+
     private static void Launch()
     {
-        RunNode("packaged-client.mjs", "verify");
-        foreach (Process process in Process.GetProcessesByName("ChatGPT"))
+        var clients = Process.GetProcessesByName("ChatGPT");
+        try
         {
-            using (process)
+            foreach (Process process in clients)
             {
                 if (!String.Equals(ProcessPath(process), ClientExe, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException(ExitMessage);
             }
         }
+        finally { foreach (Process process in clients) process.Dispose(); }
+        if (clients.Length == 0 && RunNode("packaged-client.mjs", "display-pending").Trim() == "true")
+            ApplyDisplaySettings();
+        RunNode("packaged-client.mjs", "verify");
         Process.Start(new ProcessStartInfo(ClientExe) { WorkingDirectory = Client, UseShellExecute = true });
+    }
+
+    private static void ApplyDisplaySettings()
+    {
+        using (var progress = new Form())
+        {
+            progress.Text = Title;
+            progress.StartPosition = FormStartPosition.CenterScreen;
+            progress.FormBorderStyle = FormBorderStyle.FixedDialog;
+            progress.ControlBox = false;
+            progress.AutoSize = true;
+            progress.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            var body = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Padding = new Padding(20) };
+            body.Controls.Add(new Label { Text = "正在应用侧栏显示设置…", AutoSize = true });
+            body.Controls.Add(new ProgressBar { Style = ProgressBarStyle.Marquee, Width = 290 });
+            progress.Controls.Add(body);
+            bool finished = false;
+            progress.FormClosing += (sender, args) =>
+            {
+                if (!finished && args.CloseReason == CloseReason.UserClosing) args.Cancel = true;
+            };
+            progress.Shown += async (sender, args) =>
+            {
+                try { await Task.Run(() => RunNode("packaged-client.mjs", "install", FindStoreClient())); }
+                catch (Exception error)
+                {
+                    MessageBox.Show(progress, "显示设置暂未应用，将使用之前的设置。\n\n" + error.Message,
+                        Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                finally
+                {
+                    finished = true;
+                    progress.Close();
+                }
+            };
+            progress.ShowDialog();
+        }
     }
 
     private static string Quote(string value)
@@ -185,11 +263,69 @@ internal static class CodexUsageBar
         }
     }
 
-    private sealed class Update
+    internal sealed class Preferences
+    {
+        public bool autoCheckUpdates { get; set; }
+        public bool showShort { get; set; }
+        public bool showWeekly { get; set; }
+        public bool showResetTimes { get; set; }
+        public bool showResetCredits { get; set; }
+        public bool expandCards { get; set; }
+
+        public Preferences()
+        {
+            autoCheckUpdates = showShort = showWeekly = showResetTimes = showResetCredits = expandCards = true;
+        }
+    }
+
+    internal static Preferences ReadPreferences()
+    {
+        if (!File.Exists(PreferencesFile)) return new Preferences();
+        try { return new JavaScriptSerializer().Deserialize<Preferences>(File.ReadAllText(PreferencesFile)) ?? new Preferences(); }
+        catch (ArgumentException) { return new Preferences(); }
+        catch (InvalidOperationException) { return new Preferences(); }
+    }
+
+    internal static void SavePreferences(Preferences preferences)
+    {
+        string temporary = PreferencesFile + "." + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(preferences));
+            if (File.Exists(PreferencesFile)) File.Replace(temporary, PreferencesFile, null);
+            else File.Move(temporary, PreferencesFile);
+        }
+        finally { File.Delete(temporary); }
+    }
+
+    internal sealed class Update
     {
         public string version { get; set; }
         public string sha256 { get; set; }
         public int size { get; set; }
+    }
+
+    internal static string InstalledVersion()
+    {
+        return File.ReadAllText(VersionFile).Trim();
+    }
+
+    internal static Update FindUpdate(string installed)
+    {
+        return new JavaScriptSerializer().Deserialize<Update>(RunNode("update-release.mjs", "check", installed));
+    }
+
+    internal static T WithUpdateLock<T>(Func<T> action)
+    {
+        using (var mutex = new Mutex(false, UpdateMutex))
+        {
+            bool acquired;
+            try { acquired = mutex.WaitOne(0); }
+            catch (AbandonedMutexException) { acquired = true; }
+            if (!acquired) throw new InvalidOperationException("另一个窗口正在检查或下载更新。");
+            try { return action(); }
+            finally { mutex.ReleaseMutex(); }
+        }
     }
 
     private static void DeleteUpdateDownload(string directory)
@@ -204,48 +340,50 @@ internal static class CodexUsageBar
         catch (UnauthorizedAccessException) { }
     }
 
+    internal static void StartUpdate(Update update, string installed)
+    {
+        if (InstalledVersion() != installed) throw new InvalidOperationException("本机版本已改变，请重新检查。");
+        string download = Path.Combine(Local, "update-download");
+        DeleteUpdateDownload(download);
+        if (Directory.Exists(download)) throw new IOException("已有安装向导正在使用更新包。");
+        Directory.CreateDirectory(download);
+        string setup = Path.Combine(download, SetupName);
+        try
+        {
+            RunNode("update-release.mjs", "download", update.version, update.sha256, update.size.ToString(CultureInfo.InvariantCulture), setup);
+            if (InstalledVersion() != installed) throw new InvalidOperationException("本机版本已改变，请重新检查。");
+            using (Process installer = Process.Start(new ProcessStartInfo(setup) { UseShellExecute = true })) { }
+        }
+        catch
+        {
+            DeleteUpdateDownload(download);
+            throw;
+        }
+    }
+
     private static void CheckForUpdate()
     {
-        bool ownsMutex = false, accepted = false;
-        string temporary = null;
-        using (var mutex = new Mutex(false, @"Local\CodexUsageBarWindowsUpdate"))
+        bool accepted = false;
+        try
         {
-            try
+            WithUpdateLock(() =>
             {
-                if (!File.Exists(VersionFile)) return;
-                try { ownsMutex = mutex.WaitOne(0); }
-                catch (AbandonedMutexException) { ownsMutex = true; }
-                if (!ownsMutex) return;
-                string download = Path.Combine(Local, "update-download");
-                DeleteUpdateDownload(download);
-                string installed = File.ReadAllText(VersionFile).Trim();
-                var update = new JavaScriptSerializer().Deserialize<Update>(RunNode("update-release.mjs", "check", installed));
-                if (update == null) return;
+                if (!File.Exists(VersionFile)) return false;
+                string installed = InstalledVersion();
+                var update = FindUpdate(installed);
+                if (update == null) return false;
                 string text = "Windows 版有更新：v" + installed + " → v" + update.version + "。" +
                     "\n\n是否下载安装包并打开向导？安装前请保存工作并退出当前 Codex UsageBar。";
                 accepted = MessageBox.Show(text, Title, MessageBoxButtons.YesNo, MessageBoxIcon.Information,
                     MessageBoxDefaultButton.Button2) == DialogResult.Yes;
-                if (!accepted) return;
-                if (Directory.Exists(download)) throw new IOException("An installer is still in use.");
-                temporary = download;
-                Directory.CreateDirectory(temporary);
-                string setup = Path.Combine(temporary, SetupName);
-                RunNode("update-release.mjs", "download", update.version, update.sha256, update.size.ToString(CultureInfo.InvariantCulture), setup);
-                if (!File.Exists(VersionFile) || File.ReadAllText(VersionFile).Trim() != installed) return;
-                using (Process installer = Process.Start(new ProcessStartInfo(setup) { UseShellExecute = true })) { }
-                // Setup replaces this launcher, so exit and clean the download on a later launch.
-                temporary = null;
-            }
-            catch (Exception)
-            {
-                if (accepted) MessageBox.Show("更新包下载、校验或启动失败。可从 GitHub 下载 Windows 安装包。",
-                    Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-            finally
-            {
-                if (temporary != null) DeleteUpdateDownload(temporary);
-                if (ownsMutex) mutex.ReleaseMutex();
-            }
+                if (accepted) StartUpdate(update, installed);
+                return accepted;
+            });
+        }
+        catch (Exception)
+        {
+            if (accepted) MessageBox.Show("更新包下载、校验或启动失败。可从 GitHub 下载 Windows 安装包。",
+                Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 }

@@ -9,6 +9,7 @@ import { transformSidebar, PROFILE } from '../patch/profile.mjs';
 import { nativeWindowData, createSidebarQuota } from '../patch/sidebar-runtime.mjs';
 import { activatePatch, checkFiles } from '../patch/manage.mjs';
 import { AUTO_ADAPTER } from '../patch/auto-adapter.mjs';
+import { displayPreferences } from '../patch/display-preferences.mjs';
 
 async function temporary(t) {
   const root = await realpath(tmpdir());
@@ -60,6 +61,32 @@ test('quota flyout uses the native menu surface and official theme classes', () 
   let prevented = false;
   tree.props.onOpenAutoFocus({ preventDefault() { prevented = true; } });
   assert.equal(prevented, true);
+});
+
+test('display preferences independently hide quota rows, reset times, and credit queries', () => {
+  const React = { useState: init => [typeof init === 'function' ? init() : init, () => {}],
+    useRef: current => ({ current }), useEffect() {}, lazy() { assert.fail('Hidden credits must not create a query'); } };
+  const jsx = { jsx: (type, props) => ({ type, props }) };
+  const usage = { rate_limit: {
+    primary_window: { used_percent: 13, limit_window_seconds: 18000 },
+    secondary_window: { used_percent: 23, limit_window_seconds: 604800 },
+  } };
+  const preferences = displayPreferences({ showShort: false, showResetTimes: false, showResetCredits: false });
+  const menu = Symbol('menu');
+  const credits = Symbol('credits');
+  const Component = createSidebarQuota(React, jsx, menu, nativeWindowData, () => {}, credits, preferences);
+  const tree = JSON.stringify(Component({ usage }).props);
+  assert.match(tree, /周额度/);
+  assert.match(tree, /77%/);
+  assert.doesNotMatch(tree, /5h额度|87%|重置时间未知|北京时间/);
+
+  const hidden = displayPreferences({ ...preferences, showWeekly: false });
+  assert.equal(createSidebarQuota(React, jsx, menu, nativeWindowData, null, credits, hidden)({ usage }), null);
+  const cardsOnly = displayPreferences({ ...hidden, showResetCredits: true, expandCards: false });
+  const cardMenu = createSidebarQuota(React, jsx, menu, nativeWindowData, null, credits, cardsOnly)({ usage });
+  assert.match(cardMenu.props.triggerButton.props['aria-label'], /重置卡/);
+  const cardView = cardMenu.props.children.props.children.find(child => child?.type === credits);
+  assert.equal(cardView.props.expandCards, false);
 });
 
 test('renderer patch requires an exact fingerprint and unique anchors', () => {
