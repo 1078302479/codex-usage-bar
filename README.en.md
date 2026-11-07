@@ -1,4 +1,4 @@
-> **Windows branch** · [Download the EXE installer](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0) · [Installation and updates](windows/README.en.md) · [简体中文](windows/README.md)
+> **Windows branch** · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0) · [macOS release](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Installation and updates](windows/README.en.md) · [简体中文](windows/README.md)
 >
 > This branch contains the Windows sidebar quota and reset-credit component. The macOS project is described below and maintained on [main](https://github.com/1078302479/codex-usage-bar/tree/main).
 

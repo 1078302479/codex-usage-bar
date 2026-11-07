@@ -1,4 +1,4 @@
-> **Windows 版独立分支** · [下载 EXE 安装包](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0) · [安装和升级说明](windows/README.md) · [English](windows/README.en.md)
+> **Windows 版独立分支** · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.0) · [macOS 下载页](https://github.com/1078302479/codex-usage-bar/releases/latest) · [安装和升级说明](windows/README.md) · [English](windows/README.en.md)
 >
 > 本分支提供 Windows 客户端侧栏额度和重置卡组件。下方为 macOS 项目说明，macOS 开发与发布见 [main](https://github.com/1078302479/codex-usage-bar/tree/main)。
 

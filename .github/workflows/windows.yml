@@ -67,11 +67,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $setup = '.local/windows-package/CodexUsageBar-Windows-x64-Setup.exe'
-          $notes = @'
-          Download **CodexUsageBar-Windows-x64-Setup.exe** and run it on Windows 11 x64 with the official Microsoft Store edition of Codex already installed. Setup includes its own runtime.
-
-          After setup, exit Codex and open **Codex UsageBar** from the desktop or Start menu. The setup is unsigned, and the generated local client copy has a modified signature.
-
-          [中文安装说明](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/README.md) · [English instructions](https://github.com/1078302479/codex-usage-bar/blob/windows/windows/README.en.md)
-          '@
-          gh release create $env:GITHUB_REF_NAME $setup "$setup.sha256" --verify-tag --prerelease --latest=false --title "Codex UsageBar $env:GITHUB_REF_NAME" --notes $notes
+          $version = $env:GITHUB_REF_NAME.Substring('windows-'.Length)
+          gh release create $env:GITHUB_REF_NAME $setup "$setup.sha256" --verify-tag --prerelease --latest=false --title "Codex UsageBar for Windows $version" --notes-file windows/setup/ReleaseNotes.md
