@@ -73,6 +73,10 @@ begin
   CopyPreparationFailed := not RunInstallerScript('-SkipShortcut -ReplaceExisting -LogPath "' + LogPath + '"', ExitCode);
   if CopyPreparationFailed then
     RaiseException('Could not prepare the Codex client copy. Check the setup log at:' + #13#10 + LogPath);
+  CopyPreparationFailed := not SaveStringToFile(
+    ExpandConstant('{app}\.local\windows-sidebar-version.txt'), '{#AppVersion}', False);
+  if CopyPreparationFailed then
+    RaiseException('Could not record the installed version.');
 end;
 
 function GetCustomSetupExitCode: Integer;

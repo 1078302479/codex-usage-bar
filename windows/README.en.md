@@ -9,12 +9,14 @@ This experimental community build generates a separate client copy from your ins
 ## Install
 
 1. Install the official Microsoft Store edition of Codex on Windows 11 x64.
-2. Download and run [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.0/CodexUsageBar-Windows-x64-Setup.exe).
+2. Download and run [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.1/CodexUsageBar-Windows-x64-Setup.exe).
 3. Save your work and exit Codex, then open **Codex UsageBar** from the desktop or Start menu.
 
 Setup includes Node.js and dependencies. Leave several GB free for the locally generated client copy. Setup is unsigned and checks the Store client for compatibility. It was tested with internal build `26.1103.31037` in Store package `26.1103.3517.0`.
 
-To upgrade, exit Codex UsageBar and run the new installer. Rerun it after a Store client update to rebuild the local copy. Use **Settings → Apps → Installed apps → Codex UsageBar (Windows)** to uninstall. For installation failures, see `%LOCALAPPDATA%\CodexUsageBar-setup.log`.
+Starting with v0.1.1, the desktop and Start menu shortcuts check GitHub for Windows updates in the background after launch. Confirm the prompt to download the update, verify its SHA-256 checksum, and open the setup wizard. Save your work and exit Codex UsageBar before installing. To upgrade from v0.1.0, run the new installer manually once.
+
+Rerun setup after a Store client update to rebuild the local copy. Use **Settings → Apps → Installed apps → Codex UsageBar (Windows)** to uninstall. For installation failures, see `%LOCALAPPDATA%\CodexUsageBar-setup.log`.
 
 ## Install from source
 

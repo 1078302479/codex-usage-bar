@@ -6,6 +6,7 @@ $testExecutable = Join-Path $testDirectory 'ChatGPT.exe'
 $statusFile = Join-Path $repoDirectory '.local/windows-sidebar-launch.json'
 $lockFile = Join-Path $repoDirectory '.local/windows-sidebar-launch.lock'
 $launchLock = $null
+$launched = $false
 function Write-LaunchStatus([string]$State, [string]$Message) {
     @{ state = $State; message = $Message; time = [DateTimeOffset]::Now.ToString('o') } |
         ConvertTo-Json | Set-Content -LiteralPath $statusFile -Encoding UTF8
@@ -26,6 +27,7 @@ try {
         # Existing-instance handling is owned by the client itself.
         Start-Process -FilePath $testExecutable -WorkingDirectory $testDirectory
         Write-LaunchStatus 'already-running' 'The patched client is already running.'
+        $launched = $true
         return
     }
     $unknown = @($clients | Where-Object { -not $_.Path -or $_.Path -notmatch '\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\ChatGPT\.exe$' })
@@ -51,6 +53,7 @@ try {
     } while ($visible.Count -eq 0 -and [DateTime]::UtcNow -lt $deadline)
     if ($visible.Count -eq 0) { throw 'No visible patched-client window was observed. Check client startup before retrying.' }
     Write-LaunchStatus 'window-started' 'Verified patched-client path and visible window. Sidebar rendering needs visual confirmation.'
+    $launched = $true
 } catch {
     Write-LaunchStatus 'failed' $_.Exception.Message
     if ($ShowErrors) {
@@ -62,5 +65,10 @@ try {
     if ($launchLock) {
         $launchLock.Dispose()
         Remove-Item -LiteralPath $lockFile
+    }
+    if ($launched -and (Test-Path -LiteralPath (Join-Path $repoDirectory '.local/windows-sidebar-version.txt') -PathType Leaf)) {
+        $checker = Join-Path $PSScriptRoot 'Check-SidebarUpdate.ps1'
+        $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $checker + '"'
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -ArgumentList $arguments -WindowStyle Hidden -ErrorAction SilentlyContinue
     }
 }

@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Compiler,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.0'
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.1'
 )
 $ErrorActionPreference = 'Stop'
 $windowsDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..')).ProviderPath
@@ -35,7 +35,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $windowsDirectory 'Install-Sidebar.ps1') -Destination $payloadWindows
     Get-ChildItem -LiteralPath (Join-Path $windowsDirectory 'patch') -Filter *.mjs -File |
         Copy-Item -Destination $payloadPatch
-    foreach ($script in @('Open-SidebarClient.ps1', 'Start-SidebarTest.ps1', 'Resolve-SidebarNode.ps1')) {
+    foreach ($script in @('Open-SidebarClient.ps1', 'Start-SidebarTest.ps1', 'Resolve-SidebarNode.ps1', 'Check-SidebarUpdate.ps1')) {
         Copy-Item -LiteralPath (Join-Path $windowsDirectory "patch/$script") -Destination $payloadPatch
     }
     Copy-Item -LiteralPath (Join-Path $nodeDist 'node.exe'), (Join-Path $nodeDist 'LICENSE') -Destination $runtime
