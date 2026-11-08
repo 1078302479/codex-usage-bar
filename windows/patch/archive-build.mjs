@@ -29,26 +29,31 @@ export function fileIntegrity(bytes, blockSize = 4 * 1024 * 1024) {
   return { algorithm: 'SHA256', hash: sha256(bytes), blockSize, blocks };
 }
 
-export async function buildArchive(source, destination, target, replacement) {
+export async function buildArchive(source, destination, target, replacement, additional = []) {
   const archive = await openAsar(source);
   try {
-    // Validate source entry before carrying any content over to the staged file.
-    await archive.read(target);
-    const originalSize = (await stat(source)).size;
-    const entry = archive.entries.get(target);
-    entry.offset = String(originalSize - archive.base);
-    entry.size = replacement.length;
-    entry.integrity = fileIntegrity(replacement, entry.integrity?.blockSize);
+    const replacements = [[target, replacement], ...additional];
+    let offset = (await stat(source)).size - archive.base;
+    for (const [path, content] of replacements) {
+      await archive.read(path);
+      const entry = archive.entries.get(path);
+      entry.offset = String(offset);
+      entry.size = content.length;
+      entry.integrity = fileIntegrity(content, entry.integrity?.blockSize);
+      offset += content.length;
+    }
     const header = encodeHeader(archive.header);
     async function* chunks() {
       yield header;
       yield* createReadStream(source, { start: archive.base });
-      yield replacement;
+      for (const [, content] of replacements) yield content;
     }
     await pipeline(chunks(), createWriteStream(destination, { flags: 'wx' }));
     const checked = await openAsar(destination);
     try {
-      if (!(await checked.read(target)).equals(replacement)) throw new Error('Staged archive verification failed');
+      for (const [path, content] of replacements) {
+        if (!(await checked.read(path)).equals(content)) throw new Error('Staged archive verification failed');
+      }
       return { beforeHeaderSha256: sha256(archive.headerBytes), afterHeaderSha256: sha256(checked.headerBytes) };
     } finally { await checked.close(); }
   } finally { await archive.close(); }

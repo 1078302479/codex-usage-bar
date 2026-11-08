@@ -8,6 +8,7 @@ import { openAsar, sha256 } from './asar.mjs';
 import { PROFILE } from './profile.mjs';
 import { AUTO_ADAPTER, discoverAdapter, transformAuto } from './auto-adapter.mjs';
 import { buildArchive, buildExecutable, hashFile } from './archive-build.mjs';
+import { discoverPinSupport } from './pin-adapter.mjs';
 
 const FILES = ['resources/app.asar', 'ChatGPT.exe'];
 const MANIFEST = 'usagebar-patch.json';
@@ -26,17 +27,24 @@ export async function stagePatch(appDirectory, outputDirectory, display = null) 
   await mkdir(join(output, 'resources'));
   const archivePath = join(app, 'resources/app.asar');
   const archive = await openAsar(archivePath);
-  let transformed, adapter, sourceHeaderSha256;
+  let transformed, adapter, pin, sourceHeaderSha256;
   try {
     sourceHeaderSha256 = sha256(archive.headerBytes);
     adapter = await discoverAdapter(archive);
-    transformed = transformAuto(adapter.source, adapter.analysis, adapter.resetCredits, display);
+    pin = await discoverPinSupport(archive);
+    transformed = transformAuto(adapter.source, adapter.analysis, adapter.resetCredits, display, pin?.portal);
   } finally { await archive.close(); }
   const syntax = spawnSync(process.execPath, ['--check', '--input-type=module'],
     { input: transformed, encoding: 'utf8', windowsHide: true, timeout: 15000 });
   if (syntax.error || syntax.status !== 0) throw new Error('Generated renderer JavaScript failed syntax validation');
+  if (pin) {
+    const mainSyntax = spawnSync(process.execPath, ['--check', '--input-type=commonjs'],
+      { input: pin.transformed, encoding: 'utf8', windowsHide: true, timeout: 15000 });
+    if (mainSyntax.error || mainSyntax.status !== 0) throw new Error('Generated window adapter failed syntax validation');
+  }
   const beforeArchiveHash = await hashFile(archivePath);
-  const headers = await buildArchive(archivePath, join(output, FILES[0]), adapter.target, Buffer.from(transformed));
+  const additional = pin ? [[pin.path, Buffer.from(pin.transformed)]] : [];
+  const headers = await buildArchive(archivePath, join(output, FILES[0]), adapter.target, Buffer.from(transformed), additional);
   if (headers.beforeHeaderSha256 !== sourceHeaderSha256) throw new Error('Client changed after analysis; discard this stage');
   const exe = await buildExecutable(join(app, FILES[1]), join(output, FILES[1]), headers.beforeHeaderSha256, headers.afterHeaderSha256);
   // Detect an update of the original client during preparation.
@@ -46,6 +54,7 @@ export async function stagePatch(appDirectory, outputDirectory, display = null) 
     sourceSha256: adapter.sourceSha256, adaptation: 'AST-validated native rail structure',
     resetCredits: adapter.resetCredits,
     display,
+    pinSupported: Boolean(pin),
     signatureImpact: 'Changing the embedded ASAR header hash invalidates ChatGPT.exe Authenticode signature. Integrity validation stays enabled.',
     activation: 'Offline stage only. No installed client files have been modified.',
     files: {

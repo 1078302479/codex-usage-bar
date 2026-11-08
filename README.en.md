@@ -1,13 +1,15 @@
 # Codex UsageBar for Windows
 
-[简体中文](README.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.4) · [macOS edition](https://github.com/1078302479/codex-usage-bar/tree/main)
+[简体中文](README.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.5) · [macOS edition](https://github.com/1078302479/codex-usage-bar/tree/main)
 
 See remaining short-window and weekly quota in the Codex sidebar. Hover for reset times in Beijing time, countdowns, and reset-credit details. Card details open expanded. **Use** takes you to the **Usage limit resets** section of Codex settings.
+
+Use the pin in the upper-right corner to keep the quota panel above other apps. Click it again to close the floating panel.
 
 ## Download and install
 
 1. Install the official Codex app from the Microsoft Store on **Windows 11 x64**.
-2. Download and run **CodexUsageBar-Windows-x64-Setup.exe**, then follow the wizard. The installer includes the runtime. [Download the EXE](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.4/CodexUsageBar-Windows-x64-Setup.exe)
+2. Download and run **CodexUsageBar-Windows-x64-Setup.exe**, then follow the wizard. The installer includes the runtime. [Download the EXE](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.5/CodexUsageBar-Windows-x64-Setup.exe)
 3. Save your work and exit Codex, then open **Codex UsageBar** from the desktop or Start menu.
 
 This community preview generates a separate client copy from the installed Store app. The installer is unsigned, so Windows may display an unknown-publisher prompt. [Compatibility, upgrade and uninstall instructions](windows/README.en.md)

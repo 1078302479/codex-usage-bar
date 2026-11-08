@@ -30,7 +30,7 @@ export function nativeWindowData(usage, observedAt, now) {
   };
 }
 
-export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsHook = null, ResetCreditView = null, display = null) {
+export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsHook = null, ResetCreditView = null, display = null, pin = null) {
   const h = jsx.jsx;
   const showShort = display?.showShort !== false;
   const showWeekly = display?.showWeekly !== false;
@@ -78,8 +78,70 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
   return function UsageBarSidebar({ usage, onManageUsage, resetHeading }) {
     const [now, setNow] = React.useState(() => Date.now());
     const [open, setOpen] = React.useState(false);
+    const [pinned, setPinned] = React.useState(null);
+    const [pinError, setPinError] = React.useState(false);
+    const pinWindow = React.useRef(null);
+    const clearPin = popup => {
+      if (pinWindow.current !== popup) return;
+      pinWindow.current = null;
+      setPinned(null);
+      setOpen(false);
+    };
+    React.useEffect(() => () => {
+      const popup = pinWindow.current;
+      pinWindow.current = null;
+      popup?.close();
+    }, []);
+    const togglePin = async event => {
+      event.stopPropagation();
+      if (pinWindow.current && !pinWindow.current.closed) {
+        const popup = pinWindow.current;
+        clearPin(popup);
+        popup.close();
+        return;
+      }
+      setPinError(false);
+      let popup;
+      try {
+        popup = window.open('about:blank', pin.name, 'popup=yes');
+        if (!popup || popup.closed) throw new Error('Unable to open the quota window');
+        pinWindow.current = popup;
+        popup.addEventListener('pagehide', () => clearPin(popup), { once: true });
+        const child = popup.document;
+        child.title = 'Codex 剩余额度';
+        for (const attribute of document.documentElement.attributes) {
+          if (attribute.name === 'class' || attribute.name === 'style' || attribute.name.startsWith('data-'))
+            child.documentElement.setAttribute(attribute.name, attribute.value);
+        }
+        for (const sheet of document.querySelectorAll('link[rel="stylesheet"],style')) {
+          const copy = child.importNode(sheet, true);
+          if (sheet.tagName === 'LINK') copy.href = sheet.href;
+          child.head.append(copy);
+        }
+        child.body.className = 'text-default';
+        const surface = event.currentTarget.closest('[role="dialog"]');
+        const color = surface && getComputedStyle(surface).backgroundColor;
+        Object.assign(child.body.style, {
+          margin: '0', minHeight: '100vh', overflow: 'auto',
+          fontFamily: getComputedStyle(document.body).fontFamily,
+          background: color && color !== 'rgba(0, 0, 0, 0)' ? color : 'var(--color-surface-primary, Canvas)',
+        });
+        const portal = await pin.portal();
+        if (pinWindow.current !== popup || popup.closed) return;
+        if (typeof portal !== 'function') throw new Error('Unable to load the quota panel');
+        setOpen(false);
+        setPinned({ portal, container: child.body });
+      } catch {
+        if (popup && pinWindow.current === popup) pinWindow.current = null;
+        popup?.close();
+        setPinned(null);
+        setOpen(true);
+        setPinError(true);
+      }
+    };
     const onUseReset = typeof onManageUsage === 'function' ? () => {
       setOpen(false);
+      if (pinned) window.focus();
       onManageUsage();
       locateResetHeading(resetHeading);
     } : undefined;
@@ -94,7 +156,10 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
     // Treat a changed native snapshot as newly observed, not a verified network read.
     if (seen.current.usage !== usage) seen.current = { usage, at: Date.now() };
     React.useEffect(() => {
-      const timer = setInterval(() => setNow(Date.now()), 1000);
+      const timer = setInterval(() => {
+        if (pinWindow.current?.closed) clearPin(pinWindow.current);
+        setNow(Date.now());
+      }, 1000);
       return () => clearInterval(timer);
     }, []);
     const data = model(usage, seen.current.at, now);
@@ -116,10 +181,22 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
       return [`重置于 ${date}`, `还剩${remaining}`];
     };
     const details = h('div', { className: 'px-row-x py-row-y text-sm text-default text-start',
-      children: [h('div', { key: 'heading', className: 'mb-4 flex items-center justify-between gap-3', children: [
+      children: [h('div', { key: 'heading', className: 'mb-4 flex items-center justify-between gap-3',
+        style: pinned ? { WebkitAppRegion: 'drag' } : undefined, children: [
         h('span', { key: 'title', id: 'usagebar-quota-heading', className: 'font-medium', children: hasQuota ? 'Codex 剩余额度' : 'Codex 重置卡' }),
-        showResetTimes || showCredits ? h('span', { key: 'zone', className: 'text-xs text-secondary', children: '北京时间' }) : null,
+        h('div', { key: 'actions', className: 'flex items-center gap-2', children: [
+          showResetTimes || showCredits ? h('span', { key: 'zone', className: 'text-xs text-secondary', children: '北京时间' }) : null,
+          pin ? h('button', { key: 'pin', type: 'button', title: pinned ? '取消置顶并关闭' : '置顶额度弹框',
+            'aria-label': pinned ? '取消置顶并关闭' : '置顶额度弹框', 'aria-pressed': Boolean(pinned),
+            className: 'shrink-0 rounded-lg p-1 text-secondary hover:bg-surface-secondary',
+            style: { WebkitAppRegion: 'no-drag', cursor: 'pointer' }, onClick: togglePin,
+            children: h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: pinned ? 'currentColor' : 'none',
+              stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
+              children: h('path', { d: 'M16 9V4l1-1H7l1 1v5l-3 3v2h14v-2l-3-3ZM12 14v7' }) }) }) : null,
+        ] }),
       ] }),
+        pinError ? h('p', { key: 'pin-error', className: 'mb-3 text-xs text-secondary', role: 'status',
+          children: '暂时无法打开置顶小窗，请重试。' }) : null,
         ...windows.map(window => h('div', { key: window.index, className: 'mb-4', children: [
           h('div', { key: 'row', className: 'mb-1.5 flex items-center justify-between gap-3', children: [
             h('span', { key: 'label', children: `${window.label}额度` }),
@@ -148,12 +225,14 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
       });
     // Match the existing rail menu's surface, width, spacing and theme. The
     // native hover implementation handles pointer travel and keyboard dismissal.
-    return h(Popover, { triggerButton: trigger, open, onOpenChange: setOpen, openOnHover: true, modal: false,
+    const menu = h(Popover, { triggerButton: trigger, open: !pinned && open,
+      onOpenChange: value => { if (!pinWindow.current) setOpen(value); }, openOnHover: true, modal: false,
       align: 'end', side: 'right', contentWidth: 'menuReadout', size: 'compact', surface: 'menu',
       contentStyle: { width: 'max-content', maxWidth: 'min(400px, calc(100vw - 88px), var(--radix-dropdown-menu-content-available-width, 400px))' },
       contentRole: 'dialog', contentAriaLabelledBy: 'usagebar-quota-heading',
       onOpenAutoFocus: event => event.preventDefault(),
       children: details,
     });
+    return pinned ? h(React.Fragment, { children: [menu, pinned.portal(details, pinned.container)] }) : menu;
   };
 }

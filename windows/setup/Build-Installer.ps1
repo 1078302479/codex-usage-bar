@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Compiler,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.4',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.5',
     [string]$SignTool,
     [ValidatePattern('^[a-fA-F0-9]{40}$')][string]$SigningThumbprint,
     [switch]$SmokeTest
