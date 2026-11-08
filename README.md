@@ -7,7 +7,7 @@
   <p><a href="https://github.com/1078302479/codex-usage-bar/releases/latest">macOS 下载页</a> · <a href="#界面预览">macOS 界面截图</a> · <a href="#从源码构建">从源码构建</a> · <a href="docs/architecture.md">技术说明</a></p>
 </div>
 
-Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.5)
+Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.6)
 
 v0.1.6 支持双账号监测，以及弹窗内一键切换备用账号并重启客户端。参见[账号切换说明](docs/account-switch.md)。
 
