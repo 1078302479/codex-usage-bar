@@ -2,6 +2,17 @@ import { parse } from 'acorn';
 
 export const PIN_FRAME = 'codex-usagebar-pinned-quota-v1';
 
+function pinBounds(features, zoom) {
+  const match = /(?:^|,)usagebarbounds=(-?\d{1,6}\.\d{2}(?::-?\d{1,6}\.\d{2}){5})(?:,|$)/.exec(features);
+  if (!match) return null;
+  const [screenX, screenY, left, top, width, height] = match[1].split(':').map(Number);
+  if (width <= 0 || width > 480 || height <= 0 || height > 400) return null;
+  return {
+    x: Math.round(screenX + left * zoom), y: Math.round(screenY + top * zoom),
+    width: Math.ceil(width * zoom), height: Math.ceil(height * zoom),
+  };
+}
+
 export function transformPinMain(source) {
   // Reuse the existing primary-renderer and trusted-page checks for native comment popups.
   const openers = [...source.matchAll(/(\w+)\.setWindowOpenHandler\(\(\{disposition:\w+,url:(\w+),frameName:(\w+)\}\)=>\{(?=let \w+=.{1,100};if\([^;]{1,400}browserCommentPopupWindowCreatedHandlers)/g)];
@@ -18,13 +29,17 @@ export function transformPinMain(source) {
   const name = JSON.stringify(PIN_FRAME);
   const conditions = '"primary"===' + mode + '&&' + trusted + '(' + contents + '.getURL(),this.options.moduleDir)';
   const allow = 'if(' + frame + '===' + name + '){if(' + url + '!=="about:blank"||!(' + conditions + '))return{action:"deny"};' +
-    'return{action:"allow",outlivesOpener:false,overrideBrowserWindowOptions:{width:392,height:630,minWidth:290,minHeight:180,' +
+    'const bounds=(' + pinBounds.toString() + ')(__usageBarPinFeatures,' + contents + '.getZoomFactor());' +
+    'if(!bounds)return{action:"deny"};return{action:"allow",outlivesOpener:false,overrideBrowserWindowOptions:{...bounds,' +
     'frame:false,alwaysOnTop:true,skipTaskbar:true,fullscreenable:false,maximizable:false,minimizable:false,resizable:true}}}';
   const secure = 'if(' + details + '.frameName===' + name + '){' + child + '.removeMenu();' +
+    'const zoom=' + contents + '.getZoomFactor();' +
+    child + '.webContents.once("did-finish-load",()=>'+ child + '.webContents.setZoomFactor(zoom));' +
     child + '.webContents.setWindowOpenHandler(()=>({action:"deny"}));' +
     'for(const event of ["will-navigate","will-redirect","will-frame-navigate"])' +
     child + '.webContents.on(event,e=>e.preventDefault());return;}';
-  return source.slice(0, start) + allow + source.slice(start, createdAt) + secure + source.slice(createdAt);
+  const withFeatures = opening.replace('})=>{', ',features:__usageBarPinFeatures})=>{');
+  return source.slice(0, openers[0].index) + withFeatures + allow + source.slice(start, createdAt) + secure + source.slice(createdAt);
 }
 
 export function discoverPortal(source) {

@@ -38,6 +38,23 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
   const showResetTimes = hasQuota && display?.showResetTimes !== false;
   const showCredits = display?.showResetCredits !== false && Boolean(ResetCreditView);
   if (!hasQuota && !showCredits) return function HiddenUsageBar() { return null; };
+  function pinFeatures(surface, event) {
+    const bounds = surface.getBoundingClientRect();
+    const lastRow = surface.querySelector('[data-usagebar-last-quota]');
+    const bottom = lastRow.getBoundingClientRect().bottom;
+    const padding = parseFloat(getComputedStyle(lastRow.parentElement).paddingBottom) || 0;
+    // Screen coordinates include the WebContentsView inset. The offsets and
+    // size are CSS pixels, which the main process converts using the page zoom.
+    const geometry = [
+      event.detail ? event.screenX : window.screenX,
+      event.detail ? event.screenY : window.screenY,
+      bounds.left - (event.detail ? event.clientX : 0),
+      bounds.top - (event.detail ? event.clientY : 0),
+      bounds.width,
+      bottom - bounds.top + padding,
+    ];
+    return `popup=yes,usagebarbounds=${geometry.map(value => value.toFixed(2)).join(':')}`;
+  }
   function locateResetHeading(title) {
     const labels = new Set([title, '使用限额重置', 'Usage limit resets'].filter(Boolean));
     let attempts = 0;
@@ -103,7 +120,8 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
       setPinError(false);
       let popup;
       try {
-        popup = window.open('about:blank', pin.name, 'popup=yes');
+        const surface = event.currentTarget.closest('[role="dialog"]');
+        popup = window.open('about:blank', pin.name, pinFeatures(surface, event));
         if (!popup || popup.closed) throw new Error('Unable to open the quota window');
         pinWindow.current = popup;
         popup.addEventListener('pagehide', () => clearPin(popup), { once: true });
@@ -119,8 +137,7 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
           child.head.append(copy);
         }
         child.body.className = 'text-default';
-        const surface = event.currentTarget.closest('[role="dialog"]');
-        const color = surface && getComputedStyle(surface).backgroundColor;
+        const color = getComputedStyle(surface).backgroundColor;
         Object.assign(child.body.style, {
           margin: '0', minHeight: '100vh', overflow: 'auto',
           fontFamily: getComputedStyle(document.body).fontFamily,
@@ -141,7 +158,6 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
     };
     const onUseReset = typeof onManageUsage === 'function' ? () => {
       setOpen(false);
-      if (pinned) window.focus();
       onManageUsage();
       locateResetHeading(resetHeading);
     } : undefined;
@@ -182,14 +198,14 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
     };
     const details = h('div', { className: 'px-row-x py-row-y text-sm text-default text-start',
       children: [h('div', { key: 'heading', className: 'mb-4 flex items-center justify-between gap-3',
-        style: pinned ? { WebkitAppRegion: 'drag' } : undefined, children: [
+        style: pinned ? { appRegion: 'drag', cursor: 'move' } : undefined, children: [
         h('span', { key: 'title', id: 'usagebar-quota-heading', className: 'font-medium', children: hasQuota ? 'Codex 剩余额度' : 'Codex 重置卡' }),
         h('div', { key: 'actions', className: 'flex items-center gap-2', children: [
-          showResetTimes || showCredits ? h('span', { key: 'zone', className: 'text-xs text-secondary', children: '北京时间' }) : null,
-          pin ? h('button', { key: 'pin', type: 'button', title: pinned ? '取消置顶并关闭' : '置顶额度弹框',
+          showResetTimes || (!pinned && showCredits) ? h('span', { key: 'zone', className: 'text-xs text-secondary', children: '北京时间' }) : null,
+          pin && hasQuota ? h('button', { key: 'pin', type: 'button', title: pinned ? '取消置顶并关闭' : '置顶额度弹框',
             'aria-label': pinned ? '取消置顶并关闭' : '置顶额度弹框', 'aria-pressed': Boolean(pinned),
             className: 'shrink-0 rounded-lg p-1 text-secondary hover:bg-surface-secondary',
-            style: { WebkitAppRegion: 'no-drag', cursor: 'pointer' }, onClick: togglePin,
+            style: { appRegion: 'no-drag', cursor: 'pointer' }, onClick: togglePin,
             children: h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: pinned ? 'currentColor' : 'none',
               stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
               children: h('path', { d: 'M16 9V4l1-1H7l1 1v5l-3 3v2h14v-2l-3-3ZM12 14v7' }) }) }) : null,
@@ -197,7 +213,9 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
       ] }),
         pinError ? h('p', { key: 'pin-error', className: 'mb-3 text-xs text-secondary', role: 'status',
           children: '暂时无法打开置顶小窗，请重试。' }) : null,
-        ...windows.map(window => h('div', { key: window.index, className: 'mb-4', children: [
+        ...windows.map((window, index) => h('div', { key: window.index,
+          'data-usagebar-last-quota': index === windows.length - 1 ? '' : undefined,
+          className: pinned && index === windows.length - 1 ? undefined : 'mb-4', children: [
           h('div', { key: 'row', className: 'mb-1.5 flex items-center justify-between gap-3', children: [
             h('span', { key: 'label', children: `${window.label}额度` }),
             h('span', { key: 'remaining', className: 'font-medium tabular-nums', children: text(window) }),
@@ -207,10 +225,10 @@ export function createSidebarQuota(React, jsx, Popover, model, loadResetCreditsH
           showResetTimes ? h('div', { key: 'reset', className: 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-secondary leading-relaxed',
             children: resetParts(window).map((part, index) => h('span', { key: index, style: { whiteSpace: 'nowrap' }, children: part })) }) : null,
         ] })),
-        CreditsQuery ? h(React.Suspense, { key: 'credits', fallback: h(ResetCreditView, { ...creditProps(usage, now), response: null, loading: true, onUseReset }),
+        !pinned && CreditsQuery ? h(React.Suspense, { key: 'credits', fallback: h(ResetCreditView, { ...creditProps(usage, now), response: null, loading: true, onUseReset }),
           children: h(CreditsQuery, { key: usage?.account_id ?? usage?.user_id ?? 'current', usage, now, onRetry: retryCredits, onUseReset }) })
-          : showCredits ? h(ResetCreditView, { key: 'credits', ...creditProps(usage, now), response: null, onUseReset }) : null,
-        hasQuota && (!data.available || data.stale) ? h('div', { key: 'footer', className: 'border-t border-default pt-2 text-xs text-secondary',
+          : !pinned && showCredits ? h(ResetCreditView, { key: 'credits', ...creditProps(usage, now), response: null, onUseReset }) : null,
+        !pinned && hasQuota && (!data.available || data.stale) ? h('div', { key: 'footer', className: 'border-t border-default pt-2 text-xs text-secondary',
           children: !data.available ? '客户端尚未提供额度数据' : '数据超过5分钟未更新 · * 标记旧值' }) : null,
       ] });
     const trigger = h('button', { type: 'button', 'data-usagebar-sidebar': '1',

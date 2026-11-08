@@ -9,7 +9,7 @@
 ## 安装
 
 1. 在 Windows 11 x64 上先通过 Microsoft Store 安装官方 Codex。
-2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.5/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
+2. 下载并双击 [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.6/CodexUsageBar-Windows-x64-Setup.exe)，按安装向导完成。
 3. 保存工作并退出当前 Codex，从桌面或开始菜单打开 **Codex UsageBar**。
 
 安装包自带 Node.js 和所需依赖。安装过程会用本机 Store 客户端生成副本，需要预留几 GB 磁盘空间。已实测客户端内部版本 `26.1103.31037`，对应 Store 包 `26.1103.3517.0`。遇到其他客户端版本时，安装程序会先做兼容性检查。安装包尚未签名，Windows 可能显示发布者未知。
@@ -22,7 +22,7 @@
 
 ## 置顶额度弹框
 
-悬停打开侧栏弹框，点击右上角的图钉。额度会显示在独立置顶小窗中，点击其他窗口也会继续显示。可拖动小窗标题区域调整位置，或再次点图钉关闭。此功能需要客户端通过窗口结构兼容检查。
+悬停打开侧栏弹框，点击右上角的图钉。只显示额度和重置时间的小窗会在原位置打开，切换到其他应用时也会保持置顶。拖动标题栏可调整位置，再次点图钉即可关闭。此功能需要客户端通过窗口结构兼容检查。
 
 ## 设置窗口
 

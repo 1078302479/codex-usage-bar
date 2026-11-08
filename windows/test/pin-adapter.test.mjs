@@ -14,21 +14,28 @@ test('only the named blank window from the trusted primary renderer receives top
   let opener, created;
   const contents = {
     getURL: () => 'app://-/index.html',
+    getZoomFactor: () => 1.25,
     setWindowOpenHandler(handler) { opener = handler; },
     on(event, handler) { if (event === 'did-create-window') created = handler; },
   };
   const manager = { options: {}, browserCommentPopupWindowCreatedHandlers: new Set([1]) };
-  const request = { url: 'about:blank', frameName: PIN_FRAME };
+  const request = { url: 'about:blank', frameName: PIN_FRAME,
+    features: 'popup=yes,usagebarbounds=-230.00:400.00:-60.00:-20.00:360.00:160.00' };
   wire.call(manager, contents, 'primary', () => true);
   const result = opener(request);
   assert.equal(result.action, 'allow');
   assert.equal(result.outlivesOpener, false);
   assert.equal(result.overrideBrowserWindowOptions.alwaysOnTop, true);
   assert.equal(result.overrideBrowserWindowOptions.skipTaskbar, true);
+  const { x, y, width, height } = result.overrideBrowserWindowOptions;
+  assert.deepEqual({ x, y, width, height }, { x: -305, y: 375, width: 450, height: 200 });
+  assert.deepEqual(opener({ ...request, features: 'popup=yes' }), { action: 'deny' });
   assert.deepEqual(opener({ ...request, url: 'https://example.test/' }), { action: 'deny' });
   assert.deepEqual(opener({ ...request, frameName: 'native-comment' }), { action: 'allow' });
   const blocked = [];
   created({ removeMenu() {}, webContents: {
+    setZoomFactor(zoom) { assert.equal(zoom, 1.25); },
+    once(event, handler) { assert.equal(event, 'did-finish-load'); handler(); },
     setWindowOpenHandler(handler) { assert.equal(handler().action, 'deny'); },
     on(event, handler) { handler({ preventDefault: () => blocked.push(event) }); },
   } }, request);
