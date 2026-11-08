@@ -10,6 +10,8 @@
 
 从 v0.1.4 起，任务栏右下角新增常驻托盘入口，设置窗口采用新的布局。点击图标可打开偏好设置，右键可打开或重启 Codex。保存显示选项后，确认重启即可自动关闭、应用设置并重新打开 Codex。
 
+v0.1.7 在偏好设置里新增「Codex 兼容性」。打开设置时会离线检测本机商店版 Codex，显示商店版本、客户端构建号，以及侧栏额度、重置卡明细和置顶窗口的适配结果。更新 Codex 后可以点击「重新检测」。
+
 v0.1.6 的置顶小窗只显示额度和重置时间。点击图钉后小窗会在原位置打开并跨应用置顶，可拖动标题栏调整位置。再次点击图钉即可关闭。
 
 从 v0.1.1 起，每次通过桌面或开始菜单打开 Codex UsageBar，都会在后台检查 Windows 更新。有新版时可以确认下载，校验 SHA-256 后会打开安装向导。安装前请保存工作并退出当前 Codex UsageBar。v0.1.0 用户需先手动运行一次新版安装包。
@@ -29,6 +31,8 @@ After setup, save your work, exit Codex, and open **Codex UsageBar** from the de
 Starting with v0.1.2, the setup and shortcuts use the project's Windows launcher. The installer explains the signature impact on the separate Codex copy.
 
 Starting with v0.1.4, click the notification-area icon to open the redesigned preferences window. Right-click to open or restart Codex. Confirm the restart after saving display changes to apply them automatically.
+
+In v0.1.7, **Codex compatibility** in preferences checks the installed Store app offline. It shows the package version, client build, and support for sidebar quota, reset-credit details, and the pinned window. Use the recheck button after updating Codex.
 
 In v0.1.6, the pinned window shows quota and reset times. It opens where the hover panel was and stays above other apps. Drag the header to move it or click the pin again to close it.
 

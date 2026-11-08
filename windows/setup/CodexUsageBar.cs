@@ -87,10 +87,21 @@ internal static class CodexUsageBar
 
     private static string FindStoreClient()
     {
+        string version;
+        string app = FindStoreClient(out version);
+        if (app == null) throw new InvalidOperationException("A supported Microsoft Store Codex installation was not found.");
+        return app;
+    }
+
+    private static string FindStoreClient(out string version)
+    {
         const int InsufficientBuffer = 122;
+        version = null;
         int count = 0, length = 0;
-        if (GetPackagesByPackageFamily(StoreFamily, ref count, null, ref length, IntPtr.Zero) != InsufficientBuffer)
-            throw new InvalidOperationException("Install the official Codex client from Microsoft Store first.");
+        int result = GetPackagesByPackageFamily(StoreFamily, ref count, null, ref length, IntPtr.Zero);
+        if (result == 0 && count == 0) return null;
+        if (result != InsufficientBuffer)
+            throw new InvalidOperationException("Could not read the Microsoft Store package registration.");
         var names = new IntPtr[count];
         IntPtr buffer = Marshal.AllocHGlobal(length * sizeof(char));
         try
@@ -103,17 +114,21 @@ internal static class CodexUsageBar
                 .OrderByDescending(package => Version.Parse(package.Fields[1]));
             foreach (var package in candidates)
             {
+                if (version == null) version = package.Fields[1];
                 int pathLength = 0;
                 if (GetPackagePathByFullName(package.Name, ref pathLength, null) != InsufficientBuffer) continue;
                 var path = new StringBuilder(pathLength);
                 if (GetPackagePathByFullName(package.Name, ref pathLength, path) != 0) continue;
                 string app = Path.Combine(path.ToString(), "app");
                 if (File.Exists(Path.Combine(app, "ChatGPT.exe")) && File.Exists(Path.Combine(app, "resources", "app.asar")))
+                {
+                    version = package.Fields[1];
                     return app;
+                }
             }
         }
         finally { Marshal.FreeHGlobal(buffer); }
-        throw new InvalidOperationException("A supported Microsoft Store Codex installation was not found.");
+        return null;
     }
 
     private static void WithLock(Action action)
@@ -368,6 +383,34 @@ internal static class CodexUsageBar
         public string version { get; set; }
         public string sha256 { get; set; }
         public int size { get; set; }
+    }
+
+    internal sealed class Compatibility
+    {
+        public string packageVersion { get; set; }
+        public string clientVersion { get; set; }
+        public string status { get; set; }
+        public bool resetCredits { get; set; }
+        public bool pin { get; set; }
+        public string reason { get; set; }
+    }
+
+    internal static Compatibility CheckCompatibility()
+    {
+        string version = null;
+        try
+        {
+            string app = FindStoreClient(out version);
+            if (app == null)
+                return new Compatibility { packageVersion = version, status = version == null ? "missing" : "unavailable" };
+            var report = new JavaScriptSerializer().Deserialize<Compatibility>(RunNode("manage.mjs", "compatibility", app));
+            report.packageVersion = version;
+            return report;
+        }
+        catch (Exception error)
+        {
+            return new Compatibility { packageVersion = version, status = "unavailable", reason = error.Message };
+        }
     }
 
     internal static string InstalledVersion()

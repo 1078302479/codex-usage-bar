@@ -6,8 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { openAsar, sha256 } from './asar.mjs';
 import { PROFILE } from './profile.mjs';
-import { AUTO_ADAPTER, discoverAdapter, transformAuto } from './auto-adapter.mjs';
-import { buildArchive, buildExecutable, hashFile } from './archive-build.mjs';
+import { AUTO_ADAPTER, discoverAdapter, readCodexVersion, transformAuto } from './auto-adapter.mjs';
+import { buildArchive, buildExecutable, checkExecutableIntegrity, hashFile } from './archive-build.mjs';
 import { discoverPinSupport } from './pin-adapter.mjs';
 
 const FILES = ['resources/app.asar', 'ChatGPT.exe'];
@@ -18,22 +18,10 @@ async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
 }
 
-export async function stagePatch(appDirectory, outputDirectory, display = null) {
-  const app = await realpath(appDirectory);
-  const output = resolve(outputDirectory);
-  // A stage must be new, and must not be inside the installed app.
-  if (output.toLowerCase().startsWith(app.toLowerCase() + '\\') || output === app) throw new Error('Stage must be outside the app');
-  await mkdir(output, { recursive: false });
-  await mkdir(join(output, 'resources'));
-  const archivePath = join(app, 'resources/app.asar');
-  const archive = await openAsar(archivePath);
-  let transformed, adapter, pin, sourceHeaderSha256;
-  try {
-    sourceHeaderSha256 = sha256(archive.headerBytes);
-    adapter = await discoverAdapter(archive);
-    pin = await discoverPinSupport(archive);
-    transformed = transformAuto(adapter.source, adapter.analysis, adapter.resetCredits, display, pin?.portal);
-  } finally { await archive.close(); }
+async function preparePatch(archive, display) {
+  const adapter = await discoverAdapter(archive);
+  const pin = await discoverPinSupport(archive);
+  const transformed = transformAuto(adapter.source, adapter.analysis, adapter.resetCredits, display, pin?.portal);
   const syntax = spawnSync(process.execPath, ['--check', '--input-type=module'],
     { input: transformed, encoding: 'utf8', windowsHide: true, timeout: 15000 });
   if (syntax.error || syntax.status !== 0) throw new Error('Generated renderer JavaScript failed syntax validation');
@@ -42,6 +30,42 @@ export async function stagePatch(appDirectory, outputDirectory, display = null) 
       { input: pin.transformed, encoding: 'utf8', windowsHide: true, timeout: 15000 });
     if (mainSyntax.error || mainSyntax.status !== 0) throw new Error('Generated window adapter failed syntax validation');
   }
+  return { adapter, pin, transformed, sourceHeaderSha256: sha256(archive.headerBytes) };
+}
+
+export async function checkCompatibility(appDirectory) {
+  let clientVersion = null;
+  try {
+    const app = await realpath(appDirectory);
+    const archive = await openAsar(join(app, FILES[0]));
+    let patch;
+    try {
+      clientVersion = await readCodexVersion(archive);
+      patch = await preparePatch(archive, null);
+    } finally { await archive.close(); }
+    await checkExecutableIntegrity(join(app, FILES[1]), patch.sourceHeaderSha256);
+    const resetCredits = Boolean(patch.adapter.resetCredits);
+    const pin = Boolean(patch.pin);
+    return { status: resetCredits && pin ? 'compatible' : 'partial', clientVersion, resetCredits, pin };
+  } catch (error) {
+    const unreadable = /^(EACCES|EPERM|ENOENT|ENOTDIR|EISDIR|EBUSY|EIO)$/.test(error.code);
+    return { status: unreadable ? 'unavailable' : 'incompatible', clientVersion, reason: error.message };
+  }
+}
+
+export async function stagePatch(appDirectory, outputDirectory, display = null) {
+  const app = await realpath(appDirectory);
+  const output = resolve(outputDirectory);
+  // A stage must be new, and must not be inside the installed app.
+  if (output.toLowerCase().startsWith(app.toLowerCase() + '\\') || output === app) throw new Error('Stage must be outside the app');
+  await mkdir(output, { recursive: false });
+  await mkdir(join(output, 'resources'));
+  const archivePath = join(app, FILES[0]);
+  const archive = await openAsar(archivePath);
+  let patch;
+  try { patch = await preparePatch(archive, display); }
+  finally { await archive.close(); }
+  const { adapter, pin, transformed, sourceHeaderSha256 } = patch;
   const beforeArchiveHash = await hashFile(archivePath);
   const additional = pin ? [[pin.path, Buffer.from(pin.transformed)]] : [];
   const headers = await buildArchive(archivePath, join(output, FILES[0]), adapter.target, Buffer.from(transformed), additional);
@@ -164,6 +188,7 @@ export async function activatePatch(appDirectory, stageDirectory, { restore = fa
 
 async function main() {
   const [command, app, directory] = process.argv.slice(2);
+  if (command === 'compatibility' && app) return checkCompatibility(app);
   if (command === 'analyze' && app) {
     const archive = await openAsar(join(await realpath(app), 'resources/app.asar'));
     try {
@@ -173,7 +198,7 @@ async function main() {
     } finally { await archive.close(); }
   }
   if (!app || !directory || !['stage', 'check', 'verify', 'apply', 'restore'].includes(command)) {
-    throw new Error('Usage: node windows/patch/manage.mjs analyze <app-directory> OR stage|check|verify|apply|restore <app-directory> <stage-directory>');
+    throw new Error('Usage: node windows/patch/manage.mjs analyze|compatibility <app-directory> OR stage|check|verify|apply|restore <app-directory> <stage-directory>');
   }
   if (command === 'stage') return stagePatch(app, directory);
   if (command === 'check' || command === 'verify') {

@@ -9,7 +9,7 @@ This experimental community build generates a separate client copy from your ins
 ## Install
 
 1. Install the official Microsoft Store edition of Codex on Windows 11 x64.
-2. Download and run [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.6/CodexUsageBar-Windows-x64-Setup.exe).
+2. Download and run [CodexUsageBar-Windows-x64-Setup.exe](https://github.com/1078302479/codex-usage-bar/releases/download/windows-v0.1.7/CodexUsageBar-Windows-x64-Setup.exe).
 3. Save your work and exit Codex, then open **Codex UsageBar** from the desktop or Start menu.
 
 Setup includes Node.js and dependencies. Leave several GB free for the locally generated client copy. Setup is unsigned and checks the Store client for compatibility. It was tested with internal build `26.1103.31037` in Store package `26.1103.3517.0`.
@@ -29,6 +29,8 @@ Hover over the sidebar quota and click the pin in the upper-right corner. The co
 After launching Codex UsageBar, click its notification-area icon to open preferences. The icon may be under the hidden-icons chevron. You can also open **Codex UsageBar Settings** from Start. Closing preferences leaves the icon running. Right-click it to open or restart Codex, or exit the tray.
 
 Preferences show the installed version and let you check for and download updates or toggle startup checks. Choose short-window quota, weekly quota, reset times and countdowns, reset credits, and whether card details start expanded.
+
+**Codex compatibility** checks the installed Store app offline when preferences open. It lists the package version, client build, and support for sidebar quota, reset-credit details, and the pinned window. Use the recheck button after updating Codex.
 
 After saving a display change, confirm the restart to apply it. Codex closes and reopens automatically. If you postpone, the settings apply on the next full launch. Before running an installer manually or uninstalling, quit Codex and choose **Exit tray** from the notification icon menu.
 

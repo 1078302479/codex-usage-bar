@@ -20,6 +20,8 @@ internal sealed class UsageBarSettings : Form
     private readonly Button check = ActionButton("检查更新");
     private readonly Button download = ActionButton("下载安装");
     private readonly Label updateStatus = TextLabel("可以手动检查 GitHub 上的 Windows 版本。");
+    private readonly Button recheckCompatibility = ActionButton("重新检测");
+    private readonly Label compatibilityStatus = TextLabel("正在检测本机 Codex…");
     private readonly Label saveStatus = TextLabel("保存后可一键重启 Codex 以应用显示设置。");
     private readonly Button save = ActionButton("保存设置");
     private readonly Button restart = ActionButton("重启 Codex");
@@ -63,15 +65,21 @@ internal sealed class UsageBarSettings : Form
             autoCheck, Row(check, download), updateStatus);
         var display = Section("侧栏显示", "选择侧栏和悬停弹框中显示的内容。",
             shortQuota, weeklyQuota, resetTimes, resetCards, expandCards);
+        var compatibility = Section("Codex 兼容性", "离线检查本机 Microsoft Store 版 Codex。",
+            compatibilityStatus, recheckCompatibility);
         var restore = ActionButton("恢复默认");
         save.BackColor = Accent;
         save.ForeColor = SystemInformation.HighContrast ? SystemColors.HighlightText : Color.White;
         save.FlatAppearance.BorderSize = 0;
-        var body = Column(eyebrow, Row(title, version), description, display, updates, saveStatus, Row(save, restart, restore));
-        body.Dock = DockStyle.Fill;
+        var body = Column(eyebrow, Row(title, version), description, display, updates, compatibility, saveStatus, Row(save, restart, restore));
+        body.Location = new Point(Padding.Left, Padding.Top);
+        AutoScroll = true;
+        MaximumSize = new Size(0, Screen.FromPoint(Cursor.Position).WorkingArea.Height);
         Controls.Add(body);
 
         download.Enabled = false;
+        Shown += async (sender, args) => await RefreshCompatibility();
+        recheckCompatibility.Click += async (sender, args) => await RefreshCompatibility();
         check.Click += async (sender, args) => await CheckUpdate();
         download.Click += async (sender, args) => await DownloadUpdate();
         shortQuota.CheckedChanged += (sender, args) => UpdateDisplayControls();
@@ -227,6 +235,39 @@ internal sealed class UsageBarSettings : Form
                 check.Enabled = true;
                 download.Enabled = available != null;
             }
+        }
+    }
+
+    private async Task RefreshCompatibility()
+    {
+        recheckCompatibility.Enabled = false;
+        compatibilityStatus.Text = "正在检测本机 Codex…";
+        try
+        {
+            var report = await Task.Run(() => CodexUsageBar.CheckCompatibility());
+            if (IsDisposed) return;
+            if (report.status == "missing")
+            {
+                compatibilityStatus.Text = "未检测到 Microsoft Store 版 Codex（x64）。";
+                return;
+            }
+            string version = report.packageVersion == null ? "" : "商店版本 " + report.packageVersion + "\n";
+            if (report.clientVersion != null) version += "客户端构建 " + report.clientVersion + "\n";
+            if (report.status == "compatible" || report.status == "partial")
+            {
+                compatibilityStatus.Text = version + (report.status == "compatible" ? "兼容" : "部分兼容") + " · 侧栏额度支持\n"
+                    + "重置卡明细" + (report.resetCredits ? "支持" : "未适配")
+                    + " · 置顶窗口" + (report.pin ? "支持" : "未适配");
+            }
+            else
+            {
+                string status = report.status == "incompatible" ? "不兼容，需要适配。" : "暂时无法完成检测。";
+                compatibilityStatus.Text = version + status + (String.IsNullOrEmpty(report.reason) ? "" : "\n" + report.reason);
+            }
+        }
+        finally
+        {
+            if (!IsDisposed) recheckCompatibility.Enabled = true;
         }
     }
 

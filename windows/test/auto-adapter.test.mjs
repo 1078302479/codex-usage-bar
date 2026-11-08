@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { analyzeRenderer, discoverAdapter, transformAuto, AUTO_ADAPTER } from '../patch/auto-adapter.mjs';
-import { sha256 } from '../patch/asar.mjs';
+import { encodeHeader } from '../patch/archive-build.mjs';
+import { openAsar, sha256 } from '../patch/asar.mjs';
+import { checkCompatibility } from '../patch/manage.mjs';
 
 // Synthetic compiled module. These are our fixtures, not copied client code.
 function renderer({ component = 'rail', react = 'React', jsx = 'view', tooltip = 'help', usage = 'snapshot' } = {}) {
@@ -100,6 +105,40 @@ test('multiple assets or unrecognized data contracts require manual adaptation',
   await assert.rejects(discoverAdapter(archiveFixture({
     'webview/changed.js': renderer().replace('used_percent', 'changed_percent'),
   })), /quota field changed/);
+});
+
+test('compatibility checks the executable and reports missing optional features without writing a patch', async t => {
+  const app = await mkdtemp(join(tmpdir(), 'usagebar-compatibility-'));
+  t.after(() => rm(app, { recursive: true }));
+  const archivePath = join(app, 'resources', 'app.asar');
+  const exePath = join(app, 'ChatGPT.exe');
+  await mkdir(join(app, 'resources'));
+  const pkg = Buffer.from(JSON.stringify({ productName: 'Codex', version: '99.12.34' }));
+  const rail = Buffer.from(renderer());
+  const asar = Buffer.concat([encodeHeader({ files: {
+    'package.json': { offset: '0', size: pkg.length },
+    webview: { files: { 'rail.js': { offset: String(pkg.length), size: rail.length } } },
+  } }), pkg, rail]);
+  await writeFile(archivePath, asar);
+  const archive = await openAsar(archivePath);
+  const hash = sha256(archive.headerBytes);
+  await archive.close();
+
+  assert.equal((await checkCompatibility(app)).status, 'unavailable');
+  await writeFile(exePath, 'bad executable');
+  const failed = await checkCompatibility(app);
+  assert.equal(failed.status, 'incompatible');
+  assert.equal(failed.clientVersion, '99.12.34');
+  assert.match(failed.reason, /integrity record/);
+
+  const executable = Buffer.from(`[{"file":"resources\\\\app.asar","alg":"SHA256","value":"${hash}"}]`);
+  await writeFile(exePath, executable);
+  assert.deepEqual(await checkCompatibility(app), {
+    status: 'partial', clientVersion: '99.12.34', resetCredits: false, pin: false,
+  });
+  assert.deepEqual((await readdir(app)).sort(), ['ChatGPT.exe', 'resources']);
+  assert.deepEqual(await readFile(archivePath), asar);
+  assert.deepEqual(await readFile(exePath), executable);
 });
 
 test('injected credit loader uses module-scoped require and waits for its dependency chunks', async () => {

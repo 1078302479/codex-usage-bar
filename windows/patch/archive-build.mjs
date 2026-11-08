@@ -59,12 +59,20 @@ export async function buildArchive(source, destination, target, replacement, add
   } finally { await archive.close(); }
 }
 
-export function updateEmbeddedHeaderHash(executable, beforeHash, afterHash) {
+function embeddedHeaderHashOffset(executable, beforeHash) {
   const before = Buffer.from(`[{"file":"resources\\\\app.asar","alg":"SHA256","value":"${beforeHash}"}]`);
   const at = executable.indexOf(before);
   if (at < 0 || executable.indexOf(before, at + 1) >= 0) throw new Error('Unsupported executable integrity record');
+  return at + before.indexOf(beforeHash);
+}
+
+export async function checkExecutableIntegrity(source, headerHash) {
+  embeddedHeaderHashOffset(await readFile(source), headerHash);
+}
+
+export function updateEmbeddedHeaderHash(executable, beforeHash, afterHash) {
+  const hashAt = embeddedHeaderHashOffset(executable, beforeHash);
   const result = Buffer.from(executable);
-  const hashAt = at + before.indexOf(beforeHash);
   result.write(afterHash, hashAt, 64, 'ascii');
   return result;
 }

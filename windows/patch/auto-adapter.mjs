@@ -178,9 +178,15 @@ export function transformAuto(source, analysis = analyzeRenderer(source), resetC
   return output;
 }
 
-export async function discoverAdapter(archive) {
+export async function readCodexVersion(archive) {
   const pkg = JSON.parse((await archive.read('package.json')).toString());
-  if (pkg.productName !== 'Codex' || !/^[A-Za-z0-9._-]{1,80}$/.test(pkg.version)) throw new Error('Unsupported client package');
+  if (pkg.productName !== 'Codex' || typeof pkg.version !== 'string'
+      || !/^[A-Za-z0-9._-]{1,80}$/.test(pkg.version)) throw new Error('Unsupported client package');
+  return pkg.version;
+}
+
+export async function discoverAdapter(archive) {
+  const version = await readCodexVersion(archive);
   const candidates = [], resetHooks = [];
   for (const [path, entry] of archive.entries) {
     if (!/^webview\/.*\.m?js$/.test(path) || entry.size > 16 * 1024 * 1024 || entry.unpacked) continue;
@@ -197,7 +203,7 @@ export async function discoverAdapter(archive) {
       if (error.code === 'NO_RAIL_EXPORT') continue;
       throw new Error(`${path}: ${error.message}`);
     }
-    candidates.push({ id: AUTO_ADAPTER, version: pkg.version, target: path,
+    candidates.push({ id: AUTO_ADAPTER, version, target: path,
       sourceSha256: sha256(Buffer.from(source)), analysis, source });
   }
   if (candidates.length !== 1) throw new Error('No unique compatible rail resource found');
