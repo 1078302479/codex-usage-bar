@@ -45,7 +45,13 @@ Background resources: settings windows are released on close, and the quota pane
 
 ## Screenshots
 
-Actual **v0.1.6** screenshots captured on the maintainer’s Mac on **2026-10-30**. Account details are redacted and some images are cropped. Values reflect the capture time; the application UI is Chinese.
+Values reflect the capture time, account emails are masked, and the application UI is Chinese. The full menu bar screenshot was added on **2026-11-11**. The remaining **v0.1.6** screenshots were captured on **2026-10-30**, with some cropped.
+
+### Menu bar and full panel
+
+The two-row menu bar shows weekly and 5-hour remaining quotas with reset times and custom percentage colors. The expanded panel includes both accounts, the alternate-account switching action, reset credits, Token activity and a 26-week usage heatmap.
+
+<img src="docs/images/screenshots/menubar-full-panel.png" width="480" alt="Two-row menu bar quotas and full dual-account panel with account switching, reset credits, Token activity and usage heatmap">
 
 ### Single and dual accounts
 
