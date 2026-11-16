@@ -8,21 +8,17 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
-## v0.1.10: in-app updates
+## v0.1.10: multiple accounts and in-app updates
 
-Review release notes, download the architecture-matched ZIP, verify SHA-256, bundle identity/version, code signature and architecture, then explicitly install and restart CodexUsageBar. The old bundle is retained for rollback; replacement or launch-request failures attempt to restore it. The installation directory must be writable. Preview releases are opt-in. v0.1.8 and earlier still require one manual upgrade to obtain this updater. Local v0.1.9 updater users can check for the stable v0.1.10 update without enabling preview releases.
+Add multiple accounts and manage them directly in the popup or Settings. The desktop client's current user is primary. Plus backups sort first, with insertion order preserved within each tier. Deletion requires confirmation, shows progress, and removes the entry immediately on success. Unsigned entries stay in management views only.
 
-[Stable release](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.10)
+Each backup card has a switch action; switching restarts the client, so save work first. Credentials remain separate while local projects, chats and provider configuration share one workspace. Switching does not fetch cloud projects/chats or restore projects from another account cache. Existing secondary files are backed up rather than imported.
 
-## v0.1.8 preview: multiple accounts
+With 1–2 signed-in accounts, Token activity is shown and credit details start collapsed. With 3+, activity is hidden and details start expanded. Free accounts show one quota bar.
 
-Add multiple accounts and manage them directly in the popup or Settings. The desktop client's currently signed-in user is the primary account. Plus backups are listed first, with insertion order preserved within a tier. Each backup card has a switch action; switching restarts the client, so save work first.
+Review release notes in-app, download the matching ZIP, verify it, then explicitly install and restart. The old bundle is retained for rollback; replacement or launch-request failures attempt restoration. Stable releases are the default; preview releases are opt-in. v0.1.8 and earlier require one manual upgrade to obtain this updater.
 
-Login credentials remain separate while local projects, chats, and provider configuration share one workspace. Switching does not fetch cloud projects/chats or restore projects from another account cache. Existing secondary workspace files/configuration are backed up. Unsigned accounts stay in management views only. Deletion requires confirmation, shows progress, and removes the entry immediately on successful logout.
-
-With 1–2 signed-in accounts, Token activity is shown and reset-credit details default to collapsed. With 3 or more, Token activity is hidden and credit details default to expanded. Free accounts show one quota bar.
-
-[Latest stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.8.md) · [Account switching](docs/account-switch.md)
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.10.md) · [Account switching](docs/account-switch.md)
 
 ## v0.1.7: account-switch project visibility fix
 
