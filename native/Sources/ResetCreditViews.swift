@@ -5,6 +5,7 @@ struct ResetCreditSectionView: View {
     @ObservedObject var state: AppState
     let openSettings: () -> Void
     var allowsReminders = true
+    var initiallyExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -74,6 +75,12 @@ struct ResetCreditSectionView: View {
             if !state.verified || state.snapshot?.resetCredits?.availableDetails.isEmpty != false {
                 reminderButton
             }
+        }
+        .onAppear {
+            state.applyCreditDetailsDefault(expanded: initiallyExpanded)
+        }
+        .onChange(of: initiallyExpanded) { _, expanded in
+            state.applyCreditDetailsDefault(expanded: expanded)
         }
         .padding(.horizontal, 20).padding(.vertical, 15)
         .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.09)).frame(height: 1) }

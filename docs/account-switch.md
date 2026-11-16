@@ -1,27 +1,23 @@
-# 账号切换（重启生效）
+# 多账号切换（重启生效） / Multi-account switching
 
-在菜单栏弹窗点击“切换并重启”，自动切换至备用账号。查看账号额度不改变执行身份。
+在首页点击“管理账号”，原地添加账号，再点击“登录”打开官方网页登录。设置中的多账号管理保留，两个入口使用同一份账号数据。未登录条目只显示在管理界面。
 
-切换前先核验目标账号登录，再请求当前 ChatGPT 客户端正常退出；未在 15 秒内退出则取消，不强制结束进程。请先完成任务并保存内容。
+当前客户端用户为“主账号”。其他已登录账号为“备用账号 1…N”，Plus 优先，同套餐按添加顺序排列。点击账号邮箱或额度只查看详情；点击“↔ 切换”才核验目标登录、请求客户端正常退出并重启。15 秒内未退出则取消，不强制结束客户端。请先保存任务。
 
-A 使用原 Codex 目录及默认配置，B 使用既有独立第二账号目录。桌面继续使用原默认数据目录，主进程固定原 CODEX_HOME；B 后台执行进程独立读取登录，共用原 sqlite_home 及 sessions、archived_sessions、worktrees、attachments，每次先退出后打开；不同时保留两个客户端。默认客户端配置和登录文件不被替换，也不复制 Token。B 启动器仅指定 CODEX_HOME 和文件凭证存储模式。
+更多菜单提供重新登录、退出和删除。删除必须二次确认；当前账号需先切换到其他账号后才能删除。退出成功后立即更新列表，后台清理不阻塞界面；失败则保留条目。退出仅清登录及额度缓存，删除另外移除账号条目，本地项目、聊天与模型配置不删除。
 
-该实现移除了模型代理，不监听端口。Codex 登录应由所选账号目录提供。本机/备用角色根据当前桌面后台的已知进程启动参数识别，无法识别或有多个冲突客户端时禁用切换；此标记不是一次真实推理的执行验证。桌面内部环境变量随版本可能变化，切换后的实际客户端身份仍需核对。
+各账号凭证分目录存储；桌面继续使用固定的本地工作空间，共用 SQLite、会话、工作树、附件及 config.toml 提供商配置。原有备用目录文件先备份再链接，不导入其历史。以当前本地项目列表为准（包括空列表），切换逻辑不从其他账号缓存恢复或合并项目，不请求云端项目和聊天同步。不会重建之前已被删除的 custom 配置。
 
-# Account switching
+执行身份通过客户端最外层后端进程定位登录目录，再用 account/read 与监测身份匹配。无法识别、身份重复或冲突时禁用切换；不是实际推理的执行验收。客户端内部环境覆盖可能随更新变化，重启后请核对实际登录用户。
 
-Use the single switch-and-restart action in the popup to choose the alternate account automatically. The target login is checked before requesting a graceful quit. Switching aborts if the client does not quit within 15 seconds; no forced termination is used. Finish running tasks and save work first.
+1～2 个已登录账号显示 Token 活动，卡片明细默认收起；3 个及以上隐藏活动、默认展开明细。手动调整在同一数量档位保留，跨档位应用新默认。
 
-A retains its default Codex home; B uses its existing isolated account home. The desktop retains its original profile and home. The B backend uses separate authentication but shares the original SQLite directory and session/worktree/attachment paths. Existing B files are preserved before linking. Default config/auth files are not replaced. There is no model proxy or listener. The UI detects known backend launch patterns and disables switching for unknown/conflicting instances, rather than claiming a verified inference identity; check the native Codex account after restart. Internal desktop environment overrides remain version-sensitive.
+## English
 
-## 新版项目状态兼容（v0.1.7）
+Manage accounts in place using Manage accounts; Settings remains a second entry to the same data. Add an account, then use the official web login. Unsigned entries are hidden from the normal home view. The current desktop user is primary; Plus backups sort first, then insertion order within a tier.
 
-新版 ChatGPT 客户端会在登录后恢复账号专属的桌面项目状态。目标账号的空列表可能覆盖已加载的本地项目列表，导致切换后侧边栏没有已有项目；项目数据库共用并不能单独解决此问题。
+Clicking a card views details. Its switch button validates the target login, requests a graceful quit, and restarts the client. Save work first; switching aborts after 15 seconds if quitting is incomplete. Deletion requires confirmation and is unavailable for the active account. Successful logout updates the list before background cleanup; failures retain the entry.
 
-切换正常退出后，同步本地项目列表、排序、会话归属及项目 ID 映射到其他账号缓存与备用 CODEX_HOME。当前列表为空且只有一个非空账号缓存时恢复原列表；多个候选时停止，避免猜测。改写前备份为 `.codex-global-state.json.workspace-backup-*`；保留账号缓存 owner、atoms 和登录凭证，不复制认证。
+Credentials remain separate; all profiles share the fixed local workspace and provider configuration. Existing secondary files are backed up rather than imported. Local project state, including an empty list, is authoritative; the switcher does not fetch cloud projects/chats or recover projects from other account caches. Removed custom-provider definitions must be restored separately.
 
-升级后请保存任务，使用“切换并重启”切回原账号，再切到备用账号。已在 ChatGPT macOS 26.1103.31037 上完成实际切换，用户确认项目列表恢复。其他及后续客户端版本仍需验证。详见 [v0.1.7 升级说明](releases/v0.1.7.md)。
-
-### Project visibility after a client update
-
-Newer clients restore account-specific desktop project lists after login. v0.1.7 synchronizes local workspace fields into account caches after a graceful exit, restores an empty list only from one unambiguous nonempty cache, and backs up changed state. Credentials and account-specific UI settings remain isolated. Upgrade, finish running tasks, switch back to the original account, then switch to the alternate account again. Confirmed on ChatGPT macOS 26.1103.31037; future client versions may require adaptation.
+Identification uses the outermost desktop backend and account/read. Unknown or ambiguous identities disable switching. This is not an inference-level verification; check the actual desktop login after restart. Internal client interfaces may change. See [v0.1.8 notes](releases/v0.1.8.md) for testing limits.

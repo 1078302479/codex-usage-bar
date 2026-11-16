@@ -14,9 +14,11 @@ protocol QuotaClient: Sendable {
     func fetchUsage(expectedScope: String) async throws -> TokenActivity
     func shutdown() async
     func beginLogin(customPath: String) async throws -> URL
+    func logout(customPath: String) async throws
 }
 
 extension QuotaClient {
+    func logout(customPath: String) async throws { throw CodexFailure.unsupported }
     func beginLogin(customPath: String) async throws -> URL { throw CodexFailure.unsupported }
 }
 
@@ -60,7 +62,6 @@ actor CodexClient: QuotaClient {
     func setHandler(_ value: @escaping @Sendable (CodexSignal) -> Void) { handler = value }
 
     func beginLogin(customPath: String) async throws -> URL {
-        guard codexHome != nil else { throw CodexFailure.unsupported }
         let executable = try Self.discover(custom: customPath)
         if process?.isRunning != true || path != executable || !ready { try await start(executable) }
         let raw = try await rpc("account/login/start", params: ["type": "chatgpt"])
@@ -68,6 +69,14 @@ actor CodexClient: QuotaClient {
               let value = result["authUrl"] as? String,
               let url = URL(string: value), Self.isOfficialLoginURL(url) else { throw CodexFailure.invalidResponse }
         return url
+    }
+
+    func logout(customPath: String) async throws {
+        let executable = try Self.discover(custom: customPath)
+        if process?.isRunning != true || path != executable || !ready { try await start(executable) }
+        _ = try await rpc("account/logout")
+        // The caller schedules shutdown after publishing successful logout.
+        // Waiting for process exit here delays removal from the account list.
     }
 
     static func isOfficialLoginURL(_ url: URL) -> Bool {
@@ -102,6 +111,14 @@ actor CodexClient: QuotaClient {
         let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/codex" }
         guard let found = (paths + known).first(where: executableFile) else { throw CodexFailure.missingCLI }
         return found
+    }
+
+    // Identity recognition must not depend on quota availability or provider limits.
+    func readAccountScope(customPath: String) async throws -> String? {
+        let executable = try Self.discover(custom: customPath)
+        if process?.isRunning != true || path != executable || !ready { try await start(executable) }
+        let response = try await rpc("account/read", params: ["refreshToken": false])
+        return try JSONDecoder().decode(AccountResponse.self, from: response).account?.scopeKey
     }
 
     func fetch(customPath: String) async throws -> QuotaSnapshot {
@@ -211,7 +228,7 @@ actor CodexClient: QuotaClient {
 
     private func rpc(_ method: String, params: [String: Any]? = nil) async throws -> Data {
         try Task.checkCancellation()
-        guard ["initialize", "account/read", "account/rateLimits/read", "account/usage/read", "account/login/start"].contains(method), process?.isRunning == true else { throw CodexFailure.processStopped }
+        guard ["initialize", "account/read", "account/rateLimits/read", "account/usage/read", "account/login/start", "account/logout"].contains(method), process?.isRunning == true else { throw CodexFailure.processStopped }
         counter += 1; let id = counter; let token = generation
         var message: [String: Any] = ["id": id, "method": method]
         if let params { message["params"] = params }

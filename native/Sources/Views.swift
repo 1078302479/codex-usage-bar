@@ -15,6 +15,12 @@ struct QuotaPanelView: View {
             Divider()
             panelFooter
         }
+        .alert("删除账号？", isPresented: Binding(get: { state.pendingAccountDeletion != nil }, set: { if !$0 { state.cancelAccountDeletion() } })) {
+            Button("取消", role: .cancel) { state.cancelAccountDeletion() }
+            Button("确认删除", role: .destructive) { state.confirmAccountDeletion() }
+        } message: {
+            Text("将退出并移除该账号，重新使用时需要登录。本地项目、聊天和模型配置会保留。")
+        }
         .overlay(alignment: .bottom) { resizeHandle }
         .frame(width: state.secondAccount == nil ? 390 : 460, height: state.panelHeight)
         .onPreferenceChange(PanelContentHeightKey.self) { height in
@@ -43,8 +49,8 @@ struct QuotaPanelView: View {
 
     private var panelContent: some View {
         VStack(spacing: 0) {
-            if let second = state.secondAccount {
-                DualAccountPanelView(primary: state, secondary: second, controller: state.dualClient, openSettings: openSettings)
+            if state.accountEntries.count > 1 || state.managingAccounts || state.localAccountRemoved {
+                DualAccountPanelView(primary: state, controller: state.dualClient, openSettings: openSettings)
             } else {
                 accountHeader
                 quotaSection
@@ -66,7 +72,7 @@ struct QuotaPanelView: View {
             Capsule().fill(PanelPalette.accountAccent)
                 .frame(width: 3, height: 34).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text(state.secondAccount == nil ? "Codex 账号" : "账号 A · 本机 Codex").font(.system(size: 10, weight: .medium))
+                Text(state.secondAccount == nil ? "Codex 账号" : "主账号").font(.system(size: 10, weight: .medium))
                     .foregroundStyle(PanelPalette.secondary)
                 Text(state.snapshot?.accountLabel ?? "当前登录待核验")
                     .font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -95,8 +101,12 @@ struct QuotaPanelView: View {
             }.font(.system(size: 11)).padding(.horizontal, 20).padding(.bottom, 12)
         }
         HStack(alignment: .top, spacing: 10) {
-            QuotaWindowView(window: state.bucket?.primary, fallback: "短周期额度", large: true, state: state)
-            QuotaWindowView(window: state.bucket?.secondary, fallback: "长周期额度", large: false, state: state)
+            if state.isFreeAccount {
+                QuotaWindowView(window: state.bucket?.primary ?? state.bucket?.secondary, fallback: "额度", large: true, state: state)
+            } else {
+                QuotaWindowView(window: state.bucket?.primary, fallback: "短周期额度", large: true, state: state)
+                QuotaWindowView(window: state.bucket?.secondary, fallback: "长周期额度", large: false, state: state)
+            }
         }.padding(.horizontal, 20).padding(.bottom, 14)
     }
 
@@ -296,11 +306,29 @@ struct UsageSettingsView: View {
                     Text("登录由 Codex 管理。应用不复制认证文件，不保存 token；CLI 和桌面客户端可能使用不同账号，请核对来源。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("双账号监测") {
-                    Toggle("同时监测第二个账号", isOn: Binding(
-                        get: { state.secondAccount != nil },
-                        set: { state.setSecondAccountEnabled($0) }))
-                    if let second = state.secondAccount { SecondaryAccountSettingsView(state: second) }
+                Section("多账号管理") {
+                    Button("添加账号") { state.addAccount() }
+                    ForEach(state.orderedAccounts, id: \.id) { entry in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(state.accountRole(entry.id)).font(.headline)
+                                Spacer()
+                                if state.deletingAccountID == entry.id {
+                                    ProgressView().controlSize(.small)
+                                    Text("正在删除…").font(.caption).foregroundStyle(.secondary)
+                                }
+                                if entry.id != state.dualClient.activeProfileID {
+                                    Button(role: .destructive) { state.requestAccountDeletion(entry.id) } label: {
+                                        Label("删除账号", systemImage: "trash")
+                                    }.buttonStyle(.borderless).foregroundStyle(Color.red)
+                                        .disabled(!state.canDeleteAccount(entry.id))
+                                }
+                            }
+                            SecondaryAccountSettingsView(state: entry.state)
+                        }
+                    }
+                    Text("当前客户端登录用户为主账号，其余为备用账号。所有账号共用本地工作空间，登录凭证独立。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("数据口径") {
                     Text("直接展示服务商返回的已用比例，以 100 − 已用计算剩余；两个窗口不相加。日志只用于触发核验，不覆盖当前账号额度。重置时间到达后等待新响应，不凭空补成 100%。")
@@ -328,12 +356,18 @@ struct UsageSettingsView: View {
                     }
                 }
                 Section("关于 CodexUsageBar") {
-                    LabeledContent("版本", value: "0.1.6")
+                    LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知")
                     Text("只读套餐额度，常驻 macOS 菜单栏。时间按北京时间显示。")
                     Text("Token 活动来自官方账号统计；支持登录时自动启动与重置卡到期通知。")
                         .foregroundStyle(.secondary)
                 }
             }.formStyle(.grouped).tabItem { Label("外观与关于", systemImage: "circle.lefthalf.filled") }.tag(SettingsTab.appearance)
+        }
+        .alert("删除账号？", isPresented: Binding(get: { state.pendingAccountDeletion != nil }, set: { if !$0 { state.cancelAccountDeletion() } })) {
+            Button("取消", role: .cancel) { state.cancelAccountDeletion() }
+            Button("确认删除", role: .destructive) { state.confirmAccountDeletion() }
+        } message: {
+            Text("将退出并移除该账号，重新使用时需要登录。本地项目、聊天和模型配置会保留。")
         }
         .frame(width: 590, height: 650)
         .padding(.top, 10)

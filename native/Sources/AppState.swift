@@ -10,6 +10,19 @@ final class AppState: ObservableObject {
     let loginItem = LoginItemController()
     lazy var dualClient: DualClientController = {
         let controller = DualClientController(defaults: defaults)
+        controller.profiles = { [weak self] in
+            self?.accountEntries.map { ($0.id, $0.state.codexHome, $0.state.verified && !$0.state.isSigningOut ? $0.state.snapshot?.accountScope : nil) } ?? []
+        }
+        controller.onActiveProfile = { [weak self] id in
+            self?.selectedAccountID = id
+            self?.syncActiveReminders(force: true)
+        }
+        controller.cliPath = { [weak self] in self?.preferences.cliPath ?? "" }
+        controller.accountScopes = { [weak self] in
+            guard let self else { return (nil, nil) }
+            return (self.verified ? self.snapshot?.accountScope : nil,
+                    self.secondAccount?.verified == true ? self.secondAccount?.snapshot?.accountScope : nil)
+        }
         controller.onAccountUncertain = { [weak self] in self?.syncActiveReminders(force: true) }
         controller.onRestartSucceeded = { [weak self] secondary in
             guard let self else { return }
@@ -23,6 +36,11 @@ final class AppState: ObservableObject {
     private var reminderVerified = false
     var onReminderDataChange: (() -> Void)?
     var reminderAccount: AppState? {
+        if secondAccount == nil && additionalAccounts.isEmpty { return dualClient.activeSecondary ? nil : self }
+        if let id = dualClient.activeProfileID {
+            guard dualClient.detected else { return nil }
+            return accountEntries.first(where: { $0.id == id })?.state
+        }
         guard secondAccount != nil else { return dualClient.activeSecondary ? nil : self }
         guard dualClient.detected else { return nil }
         return dualClient.activeSecondary ? secondAccount : self
@@ -44,6 +62,12 @@ final class AppState: ObservableObject {
     let reminders: ResetCreditReminderController
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
+    private var lastCreditDetailsDefault: Bool?
+    func applyCreditDetailsDefault(expanded: Bool) {
+        guard lastCreditDetailsDefault != expanded else { return }
+        lastCreditDetailsDefault = expanded
+        resetCreditsExpanded = expanded
+    }
     @Published var resetCreditsExpanded = false
     @Published var showingSecondAccountDetails = false {
         didSet {
@@ -51,7 +75,119 @@ final class AppState: ObservableObject {
             onDisplayChange?()
         }
     }
-    var displayedAccount: AppState { showingSecondAccountDetails ? (secondAccount ?? self) : self }
+    @Published var managingAccounts = false
+    @Published var pendingAccountDeletion: String?
+    @Published private(set) var deletingAccountID: String?
+    @Published var accountManagementMessage: String?
+    @Published private(set) var localAccountRemoved = false
+    @Published var selectedAccountID: String? { didSet { onDisplayChange?() } }
+    @Published private(set) var additionalAccounts: [String: AppState] = [:]
+    @Published private(set) var additionalAccountIDs: [String] = []
+    var accountEntries: [(id: String, state: AppState)] {
+        (localAccountRemoved ? [] : [("primary", self)]) + (secondAccount.map { [("secondary", $0)] } ?? []) + additionalAccountIDs.compactMap { id in additionalAccounts[id].map { (id, $0) } }
+    }
+    var expandsCreditDetailsByDefault: Bool { homeAccounts.count >= 3 }
+    var showsTokenActivity: Bool { (1...2).contains(homeAccounts.count) }
+    var homeAccounts: [(id: String, state: AppState)] {
+        orderedAccounts.filter { $0.state.snapshot?.accountScope != nil }
+    }
+    var displayedAccount: AppState {
+        if let selectedAccountID, let entry = accountEntries.first(where: { $0.id == selectedAccountID }),
+           managingAccounts || entry.state.snapshot?.accountScope != nil { return entry.state }
+        let legacy = showingSecondAccountDetails ? (secondAccount ?? self) : self
+        if managingAccounts || legacy.snapshot?.accountScope != nil { return legacy }
+        return homeAccounts.first(where: { $0.id == dualClient.activeProfileID })?.state ?? homeAccounts.first?.state ?? self
+    }
+    func accountRole(_ id: String) -> String {
+        guard dualClient.detected else { return "登录待确认" }
+        if id == dualClient.activeProfileID { return "主账号" }
+        guard accountEntries.first(where: { $0.id == id })?.state.snapshot?.accountScope != nil else { return "待登录账号" }
+        let backups = orderedBackupAccounts.filter { $0.state.snapshot?.accountScope != nil }
+        return "备用账号 \( (backups.firstIndex(where: { $0.id == id }) ?? 0) + 1)"
+    }
+    var orderedBackupAccounts: [(id: String, state: AppState)] {
+        accountEntries.enumerated().filter { $0.element.id != dualClient.activeProfileID }
+            .sorted { lhs, rhs in
+                if lhs.element.state.isPlusAccount != rhs.element.state.isPlusAccount { return lhs.element.state.isPlusAccount }
+                return lhs.offset < rhs.offset
+            }.map { $0.element }
+    }
+    var orderedAccounts: [(id: String, state: AppState)] {
+        let entries = accountEntries
+        return entries.filter { $0.id == dualClient.activeProfileID } + orderedBackupAccounts
+    }
+    func addAccount(startLogin: Bool = true) {
+        guard codexHome == nil else { return }
+        if secondAccount == nil { setSecondAccountEnabled(true); if startLogin { secondAccount?.signInSecondAccount() }; return }
+        let id = UUID().uuidString
+        additionalAccountIDs.append(id)
+        defaults.set(additionalAccountIDs, forKey: "additional-account-ids.v1")
+        loadAdditionalAccount(id)
+        if startLogin { additionalAccounts[id]?.signInSecondAccount() }
+    }
+    func canDeleteAccount(_ id: String) -> Bool {
+        dualClient.detected && id != dualClient.activeProfileID && !dualClient.isSwitching && deletingAccountID == nil
+            && accountEntries.contains { $0.id == id && !$0.state.isSigningOut }
+    }
+    func requestAccountDeletion(_ id: String) {
+        guard canDeleteAccount(id) else { return }
+        pendingAccountDeletion = id
+    }
+    func cancelAccountDeletion() { pendingAccountDeletion = nil }
+    func confirmAccountDeletion() {
+        guard let id = pendingAccountDeletion else { return }
+        pendingAccountDeletion = nil
+        guard canDeleteAccount(id), let account = accountEntries.first(where: { $0.id == id })?.state else { return }
+        deletingAccountID = id
+        accountManagementMessage = nil
+        account.signOut { [weak self, weak account] success in
+            guard let self, let account else { return }
+            guard success else {
+                self.deletingAccountID = nil
+                self.accountManagementMessage = "删除失败，账号已保留，请重试。"
+                return
+            }
+            // Update shared UI/registry synchronously when logout succeeds.
+            // Process/notification cleanup must not keep a deleted card on screen.
+            do {
+                if id != "primary" {
+                    account.onSignedOut = nil
+                    account.onDisplayChange = nil
+                    account.onReminderDataChange = nil
+                }
+                if id == "primary" {
+                    self.localAccountRemoved = true
+                    self.defaults.set(true, forKey: "local-account-removed.v1")
+                } else if id == "secondary" {
+                    self.secondAccount = nil
+                    self.defaults.set(false, forKey: "second-account.enabled.v1")
+                } else {
+                    self.additionalAccounts.removeValue(forKey: id)
+                    self.additionalAccountIDs.removeAll { $0 == id }
+                    self.defaults.set(self.additionalAccountIDs, forKey: "additional-account-ids.v1")
+                }
+                self.selectedAccountID = self.dualClient.activeProfileID
+                self.showingSecondAccountDetails = self.selectedAccountID == "secondary"
+                self.deletingAccountID = nil
+                self.syncActiveReminders(force: true)
+                self.onDisplayChange?()
+                if id != "primary" { Task { await account.stop() } }
+            }
+        }
+    }
+    private func loadAdditionalAccount(_ id: String) {
+        guard UUID(uuidString: id) != nil, additionalAccounts[id] == nil else { return }
+        let home = Self.secondAccountHome.deletingLastPathComponent().appendingPathComponent(id)
+        let saved = UserDefaults(suiteName: "com.guoyuming.UsageBar.account." + id)!
+        let account = AppState(defaults: saved, client: CodexClient(codexHome: home), reminderCenter: MonitoringOnlyReminderCenter(), codexHome: home)
+        account.onSignedOut = { [weak self] in self?.dualClient.profileSignedOut(id) }
+        account.preferences = preferences
+        account.onDisplayChange = { [weak self] in self?.objectWillChange.send(); self?.onDisplayChange?() }
+        account.onReminderDataChange = { [weak self] in self?.syncActiveReminders() }
+        additionalAccounts[id] = account
+        if started { account.start() }
+        account.setPanelVisible(panelVisible)
+    }
     var panelContentHeight: CGFloat = 0
     var panelPreferredHeight: CGFloat?
     var panelDragStart: CGFloat?
@@ -75,6 +211,7 @@ final class AppState: ObservableObject {
                 scheduleRefresh(reason: "更换 Codex", delay: 0)
             }
             if let secondAccount, secondAccount.preferences != preferences { secondAccount.preferences = preferences }
+            for account in additionalAccounts.values where account.preferences != preferences { account.preferences = preferences }
             onDisplayChange?()
         }
     }
@@ -92,6 +229,8 @@ final class AppState: ObservableObject {
     @Published var cliDraft = ""
     @Published private(set) var secondAccount: AppState?
     @Published private(set) var isSigningIn = false
+    @Published private(set) var isSigningOut = false
+    var onSignedOut: (() -> Void)?
     @Published private(set) var loginMessage: String?
     private var loginTask: Task<Void, Never>?
     private var loginExpiry: Task<Void, Never>?
@@ -148,8 +287,9 @@ final class AppState: ObservableObject {
                 secondary = AppState(defaults: saved, client: CodexClient(codexHome: home),
                     reminderCenter: MonitoringOnlyReminderCenter(), codexHome: home)
             }
+            secondary.onSignedOut = { [weak self] in self?.dualClient.profileSignedOut("secondary") }
             secondary.preferences = preferences
-            secondary.onDisplayChange = { [weak self] in self?.onDisplayChange?() }
+            secondary.onDisplayChange = { [weak self] in self?.objectWillChange.send(); self?.onDisplayChange?() }
             secondary.onReminderDataChange = { [weak self] in self?.syncActiveReminders() }
             secondAccount = secondary
             showingSecondAccountDetails = dualClient.activeSecondary
@@ -167,9 +307,10 @@ final class AppState: ObservableObject {
     }
 
     func signInSecondAccount() {
-        guard codexHome != nil, !isSigningIn, !paused else { return }
+        guard !isSigningIn, !isSigningOut, !paused else { return }
+        if codexHome == nil { localAccountRemoved = false; defaults.set(false, forKey: "local-account-removed.v1") }
         invalidateConnection(); clearAccount()
-        lastFailure = nil; isSigningIn = true; loginMessage = "正在打开官方登录页面，请选择另一个账号。"
+        lastFailure = nil; isSigningIn = true; loginMessage = "正在打开官方登录页面，请选择要登录的账号。"
         onDisplayChange?()
         let epoch = configurationEpoch
         let barrier = connectionBarrier
@@ -188,7 +329,7 @@ final class AppState: ObservableObject {
                 let url = try await client.beginLogin(customPath: preferences.cliPath)
                 guard !Task.isCancelled, configurationEpoch == epoch, isSigningIn else { return }
                 guard loginOpener(url) else { throw CodexFailure.serviceUnavailable }
-                loginMessage = "请在浏览器完成第二账号登录；本机原账号不受影响。"
+                loginMessage = "请在浏览器完成该账号登录。"
                 loginExpiry = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(600)) } catch { return }
                     self?.cancelSignIn()
@@ -199,6 +340,38 @@ final class AppState: ObservableObject {
                 isSigningIn = false
                 loginMessage = "无法开始官方登录，请检查 Codex 版本或连接后重试。"
                 recordFailure(Self.failure(error))
+            }
+        }
+    }
+
+    func signOut(completion: ((Bool) -> Void)? = nil) {
+        guard !isSigningOut else { completion?(false); return }
+        cancelSignIn()
+        invalidateConnection()
+        isSigningOut = true
+        loginMessage = "正在退出登录…"
+        let epoch = configurationEpoch
+        let barrier = connectionBarrier
+        Task { [weak self, client] in
+            guard let self else { return }
+            var succeeded = false
+            defer { isSigningOut = false; onDisplayChange?(); completion?(succeeded) }
+            await barrier?.value
+            guard configurationEpoch == epoch else { return }
+            do {
+                try await client.logout(customPath: preferences.cliPath)
+                guard configurationEpoch == epoch else { return }
+                invalidateConnection()
+                clearAccount()
+                lastFailure = .authRequired
+                authRecoveryAfter = nil
+                loginMessage = "已退出登录，本地项目、聊天和模型配置已保留。"
+                if codexHome == nil { dualClient.profileSignedOut("primary") }
+                onSignedOut?()
+                succeeded = true
+            } catch {
+                guard configurationEpoch == epoch else { return }
+                loginMessage = "退出登录失败，请检查客户端连接后重试。"
             }
         }
     }
@@ -214,12 +387,14 @@ final class AppState: ObservableObject {
     func refreshAllAccounts() {
         refresh()
         secondAccount?.refresh()
+        for account in additionalAccounts.values { account.refresh() }
     }
 
     init(defaults: UserDefaults = .standard, client: any QuotaClient = CodexClient(), recovery: RecoveryPolicy = RecoveryPolicy(), reminderCenter: any ReminderNotificationCenter = SystemReminderCenter(), codexHome: URL? = nil,
          loginOpener: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }, secondaryFactory: (() -> AppState)? = nil) {
         precondition(!recovery.retryDelays.isEmpty && recovery.retryDelays.allSatisfy { $0 > 0 && $0.isFinite })
         self.defaults = defaults; self.client = client; self.recovery = recovery
+        self.localAccountRemoved = defaults.bool(forKey: "local-account-removed.v1")
         self.codexHome = codexHome
         self.loginOpener = loginOpener; self.secondaryFactory = secondaryFactory
         reminders = ResetCreditReminderController(defaults: defaults, center: reminderCenter)
@@ -230,6 +405,12 @@ final class AppState: ObservableObject {
         reminders.onNeedsRefresh = { [weak self] in self?.reminderAccount?.scheduleRefresh(reason: "重置卡提醒核验", delay: 0) }
     }
 
+    var isPlusAccount: Bool {
+        (snapshot?.planType ?? bucket?.planType)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "plus"
+    }
+    var isFreeAccount: Bool {
+        (snapshot?.planType ?? bucket?.planType)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "free"
+    }
     var bucket: QuotaBucket? { QuotaPresentation.selectedBucket(snapshot, preferences: preferences) }
     var menuTitle: String { QuotaPresentation.menuTitle(snapshot: snapshot, preferences: preferences, verified: verified, now: now) }
     var isStale: Bool { snapshot.map { now.timeIntervalSince($0.observedAt) > QuotaPresentation.staleAfter } ?? false }
@@ -287,6 +468,10 @@ final class AppState: ObservableObject {
         configureClock(); configurePolling()
         refresh(reason: "启动核验")
         if codexHome == nil, defaults.bool(forKey: "second-account.enabled.v1") { setSecondAccountEnabled(true) }
+        if codexHome == nil {
+            additionalAccountIDs = (defaults.stringArray(forKey: "additional-account-ids.v1") ?? []).filter { UUID(uuidString: $0) != nil }
+            for id in additionalAccountIDs { loadAdditionalAccount(id) }
+        }
     }
 
     private func handle(_ signal: CodexSignal) {
@@ -342,6 +527,7 @@ final class AppState: ObservableObject {
     func panelOpened() {
         if codexHome == nil { dualClient.detectRunningAccount() }
         secondAccount?.panelOpened()
+        for account in additionalAccounts.values { account.panelOpened() }
         guard !isRefreshing, lastFailure?.canRetry != false, nextRetryAt == nil else { return }
         if !verified || snapshot.map({ Date().timeIntervalSince($0.observedAt) > 2 }) != false || activityAttemptAt.map({ Date().timeIntervalSince($0) >= 300 }) != false { refresh(reason: "打开面板核验") }
     }
@@ -350,10 +536,12 @@ final class AppState: ObservableObject {
         guard panelVisible != visible else { return }
         panelVisible = visible
         secondAccount?.setPanelVisible(visible)
+        for account in additionalAccounts.values { account.setPanelVisible(visible) }
         configurePolling()
     }
 
     func pollQuota(at date: Date = Date()) {
+        if codexHome == nil { dualClient.detectRunningAccount() }
         // Login can change in another Codex process without notifying this one.
         // Recreate only the failed auth session, at most once per minute.
         if lastFailure == .authRequired, !paused, !isRefreshing,
@@ -368,7 +556,7 @@ final class AppState: ObservableObject {
     }
 
     func refresh(reason: String = "手动核验") {
-        guard !paused, !isSigningIn else { return }
+        guard !paused, !isSigningIn, !isSigningOut else { return }
         let manual = reason == "手动核验" || reason == "应用连接设置"
         guard manual || (lastFailure?.canRetry != false && nextRetryAt == nil) else { return }
         if isRefreshing {
@@ -408,7 +596,7 @@ final class AppState: ObservableObject {
                 guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; activityAttemptAt = nil }
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
-                if codexHome != nil { loginMessage = "账号 B 已核验。" }
+                if codexHome != nil { loginMessage = "账号已核验。" }
                 updateReminderData()
                 configureCreditCheck()
                 cancelRetry()
@@ -567,6 +755,7 @@ final class AppState: ObservableObject {
     func pause() {
         guard !paused else { return }
         secondAccount?.pause(); cancelSignIn()
+        for account in additionalAccounts.values { account.pause() }
         paused = true; verified = false; invalidateConnection()
         updateReminderData()
         creditCheckTimer?.invalidate(); creditCheckTimer = nil
@@ -577,12 +766,14 @@ final class AppState: ObservableObject {
         guard paused else { return }
         paused = false; verified = false; now = Date()
         secondAccount?.resume()
+        for account in additionalAccounts.values { account.resume() }
         configureClock(); configurePolling(); scheduleRefresh(reason: "唤醒核验", delay: recovery.wakeDelay)
         onDisplayChange?()
     }
     func stop() async {
         cancelSignIn()
         if let secondAccount { await secondAccount.stop() }
+        for account in additionalAccounts.values { await account.stop() }
         paused = true; invalidateConnection()
         watcher?.stop(); watcher = nil; watchingClient = false
         connectivity?.stop(); connectivity = nil

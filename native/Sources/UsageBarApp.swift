@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             }
         }
         menuImageKey = imageKey
-        button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : (state.showingSecondAccountDetails ? "CodexUsageBar · 账号 B" : "CodexUsageBar · 账号 A"), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,
+        button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : ("CodexUsageBar · " + state.accountRole(state.selectedAccountID ?? (state.showingSecondAccountDetails ? "secondary" : "primary"))), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,
                           displayed.statusDetail, displayed.timestampLabel, displayed.watchDescription].joined(separator: "\n")
         button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : displayed.menuTitle))
         let appearance: NSAppearance?

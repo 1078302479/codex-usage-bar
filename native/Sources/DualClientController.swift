@@ -19,24 +19,26 @@ final class DualClientController: ObservableObject {
                 continue
             }
             if fm.fileExists(atPath: target.path) {
-                // Preserve both histories; never replace an existing workspace file.
-                if let entries = fm.enumerator(at: target, includingPropertiesForKeys: [.isDirectoryKey]) {
-                    for case let item as URL in entries {
-                        let base = target.resolvingSymlinksInPath().path + "/"
-                        let resolved = item.resolvingSymlinksInPath().path
-                        guard resolved.hasPrefix(base) else { throw CodexFailure.invalidResponse }
-                        let relative = String(resolved.dropFirst(base.count))
-                        let destination = source.appendingPathComponent(relative)
-                        let directory = try item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
-                        if directory { try fm.createDirectory(at: destination, withIntermediateDirectories: true) }
-                        else if !fm.fileExists(atPath: destination.path) { try fm.copyItem(at: item, to: destination) }
-                        else if !fm.contentsEqual(atPath: item.path, andPath: destination.path) { throw CodexFailure.invalidResponse }
-                    }
-                }
+                // The primary local workspace is authoritative. Preserve the secondary
+                // history as a backup without importing it into the shared workspace.
                 try fm.moveItem(at: target, to: secondary.appendingPathComponent(name + ".backup-" + UUID().uuidString))
             }
             try fm.createSymbolicLink(at: target, withDestinationURL: source)
         }
+    }
+    // Keep provider definitions and model settings available under either login home.
+    // Credentials remain in each home's auth.json; preserve any previous secondary config.
+    static func shareConfiguration(primary: URL, secondary: URL) throws {
+        let fm = FileManager.default
+        let source = primary.appendingPathComponent("config.toml")
+        let target = secondary.appendingPathComponent("config.toml")
+        if let link = try? fm.destinationOfSymbolicLink(atPath: target.path),
+           URL(fileURLWithPath: link, relativeTo: secondary).standardizedFileURL == source.standardizedFileURL { return }
+        if fm.fileExists(atPath: target.path) || (try? fm.destinationOfSymbolicLink(atPath: target.path)) != nil {
+            try fm.moveItem(at: target, to: secondary.appendingPathComponent("config.toml.backup-" + UUID().uuidString))
+        }
+        // A dangling link is intentional when the primary has no configuration yet.
+        try fm.createSymbolicLink(at: target, withDestinationURL: source)
     }
     // New desktop versions also read project state through the backend's CODEX_HOME.
     // Share only local workspace metadata; account UI state and credentials stay isolated.
@@ -53,19 +55,11 @@ final class DualClientController: ObservableObject {
                     "sidebar-project-thread-orders", "thread-project-assignments", "thread-project-membership-host-ids",
                     "thread-writable-roots", "thread-workspace-root-hints", "projectless-thread-ids",
                     "thread-projectless-output-directories", "pinned-thread-ids", "app-server-migrated-pinned-thread-ids-by-host"]
-        // Recover a missing active list from the account cache without replacing a nonempty list.
-        var workspace = state
-        if (workspace["local-projects"] as? [String: Any] ?? [:]).isEmpty {
-            let candidates = inactive.values.compactMap { $0["globals"] as? [String: Any] }
-                .filter { !($0["local-projects"] as? [String: Any] ?? [:]).isEmpty }
-            if candidates.isEmpty { return }
-            guard candidates.count == 1, let recovered = candidates.first else { throw CodexFailure.invalidResponse }
-            workspace = recovered
-        }
-        for key in keys { if let value = workspace[key] { state[key] = value } }
+        // The current local state is authoritative, including an empty project list.
+        // Never restore or merge another account's cached projects or conversations.
         for (owner, var entry) in inactive {
             var globals = entry["globals"] as? [String: Any] ?? [:]
-            for key in keys { if let value = workspace[key] { globals[key] = value } }
+            for key in keys { globals[key] = state[key] }
             entry["globals"] = globals
             inactive[owner] = entry
         }
@@ -97,9 +91,10 @@ final class DualClientController: ObservableObject {
                     "thread-writable-roots", "thread-workspace-root-hints", "projectless-thread-ids",
                     "thread-projectless-output-directories", "pinned-thread-ids", "app-server-migrated-pinned-thread-ids-by-host"]
         for key in keys {
-            if let value = original[key] { result[key] = value }
+            result[key] = original[key]
         }
         for key in ["app-server-project-id-by-legacy-project-id-by-host", "app-server-projects-migration-by-host"] {
+            result.removeValue(forKey: key)
             if var hosts = original[key] as? [String: Any] {
                 if let state = hosts["local:" + primary.path] { hosts["local:" + secondary.path] = state }
                 result[key] = hosts
@@ -114,32 +109,40 @@ final class DualClientController: ObservableObject {
         try data.write(to: target, options: .atomic)
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
     }
-    static func prepareLauncher(cliPath: String) throws -> URL {
+    static func prepareLauncher(cliPath: String, home: URL = AppState.secondAccountHome, profileID: String = "secondary") throws -> URL {
         let cli = try CodexClient.discover(custom: cliPath)
         let fm = FileManager.default
-        for folder in [root, profile, AppState.secondAccountHome] {
+        for folder in [root, profile, home] {
             try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
-        try shareSessions(primary: primaryHome, secondary: AppState.secondAccountHome)
-        try syncWorkspaceState(primary: primaryHome, secondary: AppState.secondAccountHome)
-        let launcher = root.appendingPathComponent("codex-secondary")
-        let source = "#!/bin/sh\nunset OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN CODEX_APP_SERVER_WS_URL\nexport CODEX_HOME=" + quote(AppState.secondAccountHome.path) + "\nexec " + quote(cli) + " -c 'cli_auth_credentials_store=\"file\"' -c " + quote("sqlite_home=\"" + primaryHome.path + "\"") + " \"$@\"\n"
+        try shareConfiguration(primary: primaryHome, secondary: home)
+        try shareSessions(primary: primaryHome, secondary: home)
+        try syncWorkspaceState(primary: primaryHome, secondary: home)
+        let launcher = root.appendingPathComponent("codex-" + profileID)
+        let source = "#!/bin/sh\nunset OPENAI_API_KEY CODEX_API_KEY CODEX_ACCESS_TOKEN CODEX_APP_SERVER_WS_URL\nexport CODEX_HOME=" + quote(home.path) + "\nexec " + quote(cli) + " -c 'cli_auth_credentials_store=\"file\"' -c " + quote("sqlite_home=\"" + primaryHome.path + "\"") + " -c " + quote("usagebar_account_id=\"" + profileID + "\"") + " \"$@\"\n"
         try source.write(to: launcher, atomically: true, encoding: .utf8)
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launcher.path)
         return launcher
     }
     private let defaults: UserDefaults
+    var profiles: (() -> [(id: String, home: URL?, scope: String?)])?
+    var onActiveProfile: ((String) -> Void)?
+    @Published private(set) var activeProfileID: String?
+    @Published var targetProfileID = "primary"
+    var accountScopes: (() -> (primary: String?, secondary: String?))?
+    var cliPath: (() -> String)?
     var onAccountUncertain: (() -> Void)?
     var onRestartSucceeded: ((Bool) -> Void)?
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         selectedSecondary = defaults.bool(forKey: "execution-account.secondary.v1")
         activeSecondary = selectedSecondary
+        activeProfileID = defaults.string(forKey: "execution-account.profile.v1") ?? (selectedSecondary ? "secondary" : "primary")
     }
     @Published private(set) var detected = false
     private var lastDetection = Date.distantPast
     private var detecting = false
-    nonisolated static func detectSecondary(processList: String, desktopPIDs: Set<Int32>) -> Bool? {
+    nonisolated static func detectProfile(processList: String, desktopPIDs: Set<Int32>) -> String? {
         let rows = processList.split(separator: "\n").compactMap { line -> (Int32, Int32, String)? in
             let parts = line.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: { $0 == " " || $0 == "\t" })
             guard parts.count == 3, let pid = Int32(parts[0]), let parent = Int32(parts[1]) else { return nil }
@@ -151,10 +154,33 @@ final class DualClientController: ObservableObject {
             for (pid, parent, _) in rows where descendants.contains(parent) { descendants.insert(pid) }
             if descendants.count == before { break }
         }
-        let servers = rows.filter { descendants.contains($0.0) && $0.2.contains("/codex ") && $0.2.contains("app-server") }
+        let candidates = rows.filter { descendants.contains($0.0) && $0.2.contains("/codex ") && $0.2.contains("app-server") }
+        let serverIDs = Set(candidates.map { $0.0 })
+        let parents = Dictionary(rows.map { ($0.0, $0.1) }, uniquingKeysWith: { first, _ in first })
+        // Tools launched inside a chat may themselves spawn quota app-servers.
+        // Only the outermost desktop backend identifies the client's login.
+        let servers = candidates.filter { server in
+            var parent = server.1
+            var visited = Set<Int32>()
+            while parent > 0 && visited.insert(parent).inserted {
+                if serverIDs.contains(parent) { return false }
+                parent = parents[parent] ?? 0
+            }
+            return true
+        }
         guard !servers.isEmpty else { return nil }
-        let identities = Set(servers.map { $0.2.contains("sqlite_home=") && $0.2.contains("cli_auth_credentials_store=") })
+        let identities = Set(servers.map { server -> String in
+            let prefix = "usagebar_account_id=\""
+            if let range = server.2.range(of: prefix), let end = server.2[range.upperBound...].firstIndex(of: "\"") {
+                let id = String(server.2[range.upperBound..<end])
+                if id == "secondary" || UUID(uuidString: id) != nil { return id }
+            }
+            return server.2.contains("sqlite_home=") && server.2.contains("cli_auth_credentials_store=") ? "secondary" : "primary"
+        })
         return identities.count == 1 ? identities.first : nil
+    }
+    nonisolated static func detectSecondary(processList: String, desktopPIDs: Set<Int32>) -> Bool? {
+        detectProfile(processList: processList, desktopPIDs: desktopPIDs).map { $0 != "primary" }
     }
     func detectRunningAccount() {
         guard !isSwitching, !detecting, Date().timeIntervalSince(lastDetection) > 3 else { return }
@@ -163,7 +189,8 @@ final class DualClientController: ObservableObject {
         guard !pids.isEmpty else { detected = false; onAccountUncertain?(); return }
         detecting = true; lastDetection = Date()
         Task {
-            let result = await Task.detached { () -> Bool? in
+            let profileList = profiles?() ?? []
+            let result = await Task.detached { () -> String? in
                 let process = Process(); let pipe = Pipe()
                 process.executableURL = URL(fileURLWithPath: "/bin/ps")
                 process.arguments = ["-axo", "pid=,ppid=,command="]
@@ -171,17 +198,57 @@ final class DualClientController: ObservableObject {
                 do { try process.run() } catch { return nil }
                 let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
                 guard process.terminationStatus == 0, let list = String(data: data, encoding: .utf8) else { return nil }
-                return Self.detectSecondary(processList: list, desktopPIDs: pids)
+                return Self.detectProfile(processList: list, desktopPIDs: pids)
             }.value
+            guard !isSwitching else { detecting = false; return }
+            guard let result else { detecting = false; detected = false; onAccountUncertain?(); return }
+            // Process ancestry locates the desktop's login home, not its user identity.
+            // Verify that home's current login against the monitored account identities.
+            let probeHome = profileList.first(where: { $0.id == result })?.home ?? (result == "secondary" ? AppState.secondAccountHome : nil)
+            let probe = CodexClient(codexHome: probeHome)
+            let scope: String?
+            do { scope = try await probe.readAccountScope(customPath: "/Applications/ChatGPT.app") }
+            catch { scope = nil }
+            await probe.shutdown()
             detecting = false
             guard !isSwitching else { return }
-            guard let result else { detected = false; onAccountUncertain?(); return }
-            acceptDetectedAccount(result)
+            if !profileList.isEmpty {
+                guard confirmProfile(scope: scope) else {
+                    detected = false; onAccountUncertain?(); return
+                }
+                return
+            }
+            let scopes = accountScopes?()
+            guard let matched = Self.matchAccount(scope: scope, primary: scopes?.primary, secondary: scopes?.secondary) else {
+                detected = false; onAccountUncertain?(); return
+            }
+            acceptDetectedAccount(matched)
         }
+    }
+    @discardableResult
+    func confirmProfile(scope: String?) -> Bool {
+        guard let scope else { return false }
+        let matches = (profiles?() ?? []).filter { $0.scope == scope }
+        guard matches.count == 1, let match = matches.first else { return false }
+        let changed = !detected || activeProfileID != match.id
+        activeProfileID = match.id
+        defaults.set(match.id, forKey: "execution-account.profile.v1")
+        activeSecondary = match.id != "primary"
+        detected = true
+        if changed { onActiveProfile?(match.id) }
+        return true
+    }
+    nonisolated static func matchAccount(scope: String?, primary: String?, secondary: String?) -> Bool? {
+        guard let scope else { return nil }
+        let matchesPrimary = scope == primary
+        let matchesSecondary = scope == secondary
+        guard matchesPrimary != matchesSecondary else { return nil }
+        return matchesSecondary
     }
     func acceptDetectedAccount(_ result: Bool) {
         let changed = activeSecondary != result || !detected
         detected = true; activeSecondary = result
+        activeProfileID = result ? "secondary" : "primary"
         if changed {
             selectedSecondary = result
             defaults.set(result, forKey: "execution-account.secondary.v1")
@@ -191,13 +258,14 @@ final class DualClientController: ObservableObject {
     func restartSucceeded(secondary: Bool, label: String) {
         selectedSecondary = secondary
         activeSecondary = secondary
+        activeProfileID = secondary ? "secondary" : "primary"
         detected = false
         defaults.set(secondary, forKey: "execution-account.secondary.v1")
-        lastOpened = (secondary ? "B" : "A") + " · " + label
+        lastOpened = label
         onRestartSucceeded?(secondary)
     }
     @Published private(set) var activeSecondary = false
-    func roleLabel(secondary: Bool) -> String { !detected ? "登录待确认" : (secondary == activeSecondary ? "本机账号" : "备用账号") }
+    func roleLabel(secondary: Bool) -> String { !detected ? "登录待确认" : (secondary == activeSecondary ? "主账号" : "备用账号") }
     var orderedSecondary: [Bool] { activeSecondary ? [true, false] : [false, true] }
     @Published var selectedSecondary = false
     @Published private(set) var isSwitching = false
@@ -207,16 +275,30 @@ final class DualClientController: ObservableObject {
         selectedSecondary = !activeSecondary
         switchAndRestart(cliPath: cliPath)
     }
+    func profileSignedOut(_ id: String) {
+        if activeProfileID == id {
+            detected = false
+            onAccountUncertain?()
+        }
+    }
+    func switchToProfile(_ id: String, cliPath: String) {
+        guard detected, !isSwitching, id != activeProfileID,
+              profiles?().contains(where: { $0.id == id && $0.scope != nil }) == true else { return }
+        targetProfileID = id
+        selectedSecondary = id != "primary"
+        switchAndRestart(cliPath: cliPath)
+    }
     private func switchAndRestart(cliPath: String) {
         guard !isSwitching else { return }
-        let useSecondary = selectedSecondary
+        let profileID = profiles == nil ? (selectedSecondary ? "secondary" : "primary") : targetProfileID
+        let useSecondary = profileID != "primary"
         isSwitching = true
         Task {
             defer { isSwitching = false }
             do {
                 let app = URL(fileURLWithPath: "/Applications/ChatGPT.app")
                 guard let bundle = Bundle(url: app), let bundleID = bundle.bundleIdentifier else { throw CodexFailure.missingCLI }
-                let home = useSecondary ? AppState.secondAccountHome : Self.primaryHome
+                let home = profiles?().first(where: { $0.id == profileID })?.home ?? (useSecondary ? AppState.secondAccountHome : Self.primaryHome)
                 // Verify the intended native login before closing any window.
                 let check = CodexClient(codexHome: useSecondary ? home : nil)
                 let snapshot: QuotaSnapshot
@@ -234,7 +316,7 @@ final class DualClientController: ObservableObject {
                 }
                 try Self.repairAccountWorkspaceState(home: Self.primaryHome)
                 let wrapper: URL
-                if useSecondary { wrapper = try Self.prepareLauncher(cliPath: cliPath) }
+                if useSecondary { wrapper = try Self.prepareLauncher(cliPath: cliPath, home: home, profileID: profileID) }
                 else { wrapper = URL(fileURLWithPath: try CodexClient.discover(custom: cliPath)) }
                 // Keep desktop workspace state on the original home; only the child login differs.
                 try FileManager.default.createDirectory(at: Self.profile, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -250,6 +332,9 @@ final class DualClientController: ObservableObject {
                 }
                 guard exit == 0 else { throw CodexFailure.processStopped }
                 restartSucceeded(secondary: useSecondary, label: snapshot.accountLabel)
+                activeProfileID = profileID
+                defaults.set(profileID, forKey: "execution-account.profile.v1")
+                onActiveProfile?(profileID)
                 message = "已按所选账号重启，请在客户端核对 Codex 账号。"
             } catch { message = "切换未完成，请先核验所选账号登录，并检查 Codex 路径。" }
         }
