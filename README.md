@@ -9,11 +9,11 @@
 
 Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
-## v0.1.10 测试版：应用内更新
+## v0.1.10 正式版：应用内更新
 
-“软件更新”支持查看版本说明、下载匹配机型的 ZIP、校验 SHA-256/应用身份/版本/签名/架构，再由用户确认安装并重启 CodexUsageBar。旧版保留备份，替换或启动请求失败时尝试回滚；安装目录须可写。默认仅检查正式版，可开启“接收测试版”。旧版 v0.1.8 及之前没有自动安装能力，首次升级仍需手动替换。 本地已安装 0.1.9 更新器的用户可开启“接收测试版”，检查并更新到 0.1.10。
+“软件更新”支持查看版本说明、下载匹配机型的 ZIP、校验 SHA-256/应用身份/版本/签名/架构，再由用户确认安装并重启 CodexUsageBar。旧版保留备份，替换或启动请求失败时尝试回滚；安装目录须可写。默认仅检查正式版，可开启“接收测试版”。旧版 v0.1.8 及之前没有自动安装能力，首次升级仍需手动替换。 本地已安装 0.1.9 更新器的用户可直接检查并更新到 0.1.10，无需开启“接收测试版”。
 
-[0.1.10 测试版下载与说明](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.10)
+[0.1.10 正式版下载与说明](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.10)
 
 ## v0.1.8 测试版：多账号管理
 
@@ -23,7 +23,7 @@ Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图�
 
 1～2 个已登录账号显示 Token 活动，重置卡明细默认收起；3 个及以上隐藏 Token 活动，明细默认展开。Free 账号仅展示一个额度进度条。
 
-[测试版下载](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.8) · [版本说明](docs/releases/v0.1.8.md) · [账号切换说明](docs/account-switch.md)
+[最新正式版下载](https://github.com/1078302479/codex-usage-bar/releases/latest) · [版本说明](docs/releases/v0.1.8.md) · [账号切换说明](docs/account-switch.md)
 
 ## v0.1.7：修复更新客户端后切换账号项目消失
 

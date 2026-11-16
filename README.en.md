@@ -8,11 +8,11 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
-## v0.1.10 preview: in-app updates
+## v0.1.10: in-app updates
 
-Review release notes, download the architecture-matched ZIP, verify SHA-256, bundle identity/version, code signature and architecture, then explicitly install and restart CodexUsageBar. The old bundle is retained for rollback; replacement or launch-request failures attempt to restore it. The installation directory must be writable. Preview releases are opt-in. v0.1.8 and earlier still require one manual upgrade to obtain this updater. Local v0.1.9 updater users can enable preview releases to test an in-app upgrade to v0.1.10.
+Review release notes, download the architecture-matched ZIP, verify SHA-256, bundle identity/version, code signature and architecture, then explicitly install and restart CodexUsageBar. The old bundle is retained for rollback; replacement or launch-request failures attempt to restore it. The installation directory must be writable. Preview releases are opt-in. v0.1.8 and earlier still require one manual upgrade to obtain this updater. Local v0.1.9 updater users can check for the stable v0.1.10 update without enabling preview releases.
 
-[Preview release](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.10)
+[Stable release](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.10)
 
 ## v0.1.8 preview: multiple accounts
 
@@ -22,7 +22,7 @@ Login credentials remain separate while local projects, chats, and provider conf
 
 With 1–2 signed-in accounts, Token activity is shown and reset-credit details default to collapsed. With 3 or more, Token activity is hidden and credit details default to expanded. Free accounts show one quota bar.
 
-[Preview downloads](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.8) · [Release notes](docs/releases/v0.1.8.md) · [Account switching](docs/account-switch.md)
+[Latest stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.8.md) · [Account switching](docs/account-switch.md)
 
 ## v0.1.7: account-switch project visibility fix
 
