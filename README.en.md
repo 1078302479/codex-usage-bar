@@ -8,6 +8,12 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.10 preview: in-app updates
+
+Review release notes, download the architecture-matched ZIP, verify SHA-256, bundle identity/version, code signature and architecture, then explicitly install and restart CodexUsageBar. The old bundle is retained for rollback; replacement or launch-request failures attempt to restore it. The installation directory must be writable. Preview releases are opt-in. v0.1.8 and earlier still require one manual upgrade to obtain this updater. Local v0.1.9 updater users can enable preview releases to test an in-app upgrade to v0.1.10.
+
+[Preview release](https://github.com/1078302479/codex-usage-bar/releases/tag/v0.1.10)
+
 ## v0.1.8 preview: multiple accounts
 
 Add multiple accounts and manage them directly in the popup or Settings. The desktop client's currently signed-in user is the primary account. Plus backups are listed first, with insertion order preserved within a tier. Each backup card has a switch action; switching restarts the client, so save work first.
@@ -32,7 +38,7 @@ This is an independent community project, not an official OpenAI application or 
 
 - Monitor two accounts concurrently; selecting a row updates the menu bar, reset credits and Token activity.
 - One-click alternate-account switching with a client restart, preserving the workspace and conversation list. The active account is listed first; disabling secondary monitoring hides switching.
-- Online update checks at startup and every eight hours, with a new-release entry in the popup and manual checks in settings. Click to open the GitHub release download page.
+- Online update checks at startup and every eight hours, with a new-release entry in the popup and manual checks in settings. Review release notes, download and verify the matching archive, then explicitly install and restart.
 
 - Remaining allowance and reset times for independent short-term and weekly windows; actual durations come from the service.
 - Independent remaining-percentage color ranges for short- and long-term menu-bar quotas, including stacked mode. Default text colors remain unchanged.
@@ -143,7 +149,7 @@ The app does not directly read authentication files, persist tokens, or start mo
 
 Open **Settings → Connection & Refresh → Software Update** to see the installed version and last check, or check manually. The app checks at startup and every eight hours, catching up after wake. Only stable public releases are considered; drafts and prereleases are excluded.
 
-When a newer version is available, the popup shows a download entry that opens this project's GitHub release page. Download the DMG and replace the app in Applications. Nothing is downloaded, installed or restarted automatically. Failed checks can be retried manually and resume on the next interval. Only public release metadata is requested; no GitHub token or Codex account information is sent.
+When a newer version is available, open its in-app release notes. Choose Download and verify; after checksum, bundle identity, version, signature and architecture checks pass, choose Install and restart. Stable releases are the default; preview releases are opt-in. Failed checks/downloads can be retried. The previous app is retained as a backup. No GitHub token or Codex account information is sent.
 
 Online update checking is included in the refreshed v0.1.6 installer (build 11). If you downloaded v0.1.6 earlier, download it again and replace the installed app.
 
