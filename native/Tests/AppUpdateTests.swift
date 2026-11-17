@@ -13,6 +13,15 @@ import Foundation
   let url = URL(string: "https://github.com/1078302479/codex-usage-bar/releases/tag/v1.0.0")!
   precondition(AppRelease(tag_name: "v1.0.0", html_url: url, draft: false, prerelease: false).safeURL == url)
   precondition(AppRelease(tag_name: "v1.0.0", html_url: url, draft: false, prerelease: true).safeURL == url)
+  precondition(AppUpdateController.releaseFromPage(url)?.tag_name == "v1.0.0")
+  for bad in ["https://github.com/other/repo/releases/tag/v1.0.0", url.absoluteString + "?x=1", "https://github.com/1078302479/codex-usage-bar/releases/tag/v1.0-beta"] {
+   precondition(AppUpdateController.releaseFromPage(URL(string: bad)) == nil)
+  }
+  try AppUpdateInstaller.validateArchiveAttributes("-rw-r--r--  2.0 unx 12 bx 12 defN 26-Nov-17 12:00 CodexUsageBar.app/test")
+  for mode in ["lrwxr-xr-x", "prw-r--r--", "crw-r--r--"] {
+   do { try AppUpdateInstaller.validateArchiveAttributes(mode + " 2.0 unx 12 bx 12 defN 26-Nov-17 12:00 CodexUsageBar.app/test"); fatalError("Special file accepted") } catch {}
+  }
+  do { try AppUpdateInstaller.validateArchiveAttributes("-rw-r--r-- 2.0 unx 999999999 bx 12 defN 26-Nov-17 12:00 CodexUsageBar.app/test"); fatalError("Oversize accepted") } catch {}
   try updatePipelineChecks()
   try installerRollbackChecks()
   print("PASS: version selection, release channels, assets, checksums, archive paths, install and rollback")
@@ -50,9 +59,14 @@ import Foundation
   let suite = "update-test-" + UUID().uuidString
   let defaults = UserDefaults(suiteName: suite)!
   defer { defaults.removePersistentDomain(forName: suite) }
+  let checked = Date()
+  defaults.set(checked, forKey: "updates.last-success.v1")
   defaults.set(true, forKey: "updates.accepts-prereleases.v1")
   let controller = AppUpdateController(version: "0.1.7", defaults: defaults)
   precondition(controller.acceptsPrereleases)
+  precondition(controller.lastChecked == checked)
+  controller.checkIfDue(now: checked.addingTimeInterval(3600))
+  precondition(!controller.checking)
   controller.stop()
  }
  static func installerRollbackChecks() throws {
@@ -67,7 +81,7 @@ import Foundation
    try Data("old".utf8).write(to: target.appendingPathComponent("version"))
    try Data("new".utf8).write(to: staged.appendingPathComponent("version"))
    let script = folder.appendingPathComponent("install.sh")
-   let source = AppUpdateInstaller.helperScript.replacingOccurrences(of: "/usr/bin/open", with: launchSuccess ? "/usr/bin/true" : "/usr/bin/false")
+   let source = AppUpdateInstaller.helperScript.replacingOccurrences(of: "/usr/bin/codesign --verify --deep --strict", with: "/usr/bin/true").replacingOccurrences(of: "/usr/bin/open", with: launchSuccess ? "/usr/bin/true" : "/usr/bin/false")
    try source.write(to: script, atomically: true, encoding: .utf8)
    let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/sh")
    process.arguments = [script.path, "99999999", target.path, staged.path, backup.path, folder.appendingPathComponent("log").path, folder.appendingPathComponent("result").path]

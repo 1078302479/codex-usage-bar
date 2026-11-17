@@ -11,8 +11,8 @@ struct AppRelease: Decodable, Sendable {
     var assets: [AppReleaseAsset]? = nil
     var safeURL: URL? {
         guard !draft, html_url.scheme == "https", html_url.host == "github.com",
-              html_url.user == nil, html_url.password == nil,
-              html_url.path.hasPrefix("/1078302479/codex-usage-bar/releases/tag/") else { return nil }
+              html_url.user == nil, html_url.password == nil, html_url.query == nil, html_url.fragment == nil,
+              html_url.path == "/1078302479/codex-usage-bar/releases/tag/" + tag_name else { return nil }
         return html_url
     }
     static func version(_ value: String) -> [Int]? {
@@ -34,13 +34,14 @@ struct AppRelease: Decodable, Sendable {
 
 @MainActor
 final class AppUpdateController: ObservableObject {
-    static let interval: TimeInterval = 8 * 60 * 60
+    static let interval: TimeInterval = 24 * 60 * 60
     static let endpoint = URL(string: "https://api.github.com/repos/1078302479/codex-usage-bar/releases/latest")!
     @Published private(set) var latest: AppRelease?
     @Published private(set) var checking = false
-    @Published private(set) var status = "启动后及每 8 小时检查更新"
+    @Published private(set) var status = "自动检查间隔为 24 小时"
     @Published private(set) var lastChecked: Date?
     @Published private(set) var downloading = false
+    @Published private(set) var downloadProgress: Double = 0
     @Published private(set) var readyToInstall = false
     @Published private(set) var installing = false
     @Published private(set) var installationReport: String?
@@ -61,8 +62,9 @@ final class AppUpdateController: ObservableObject {
     private var workDirectory: URL?
     private var installerProcess: Process?
     private var window: NSWindow?
-    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.10", defaults: UserDefaults = .standard) {
+    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.11", defaults: UserDefaults = .standard) {
         currentVersion = version; self.defaults = defaults
+        lastChecked = defaults.object(forKey: "updates.last-success.v1") as? Date
         acceptsPrereleases = defaults.bool(forKey: "updates.accepts-prereleases.v1")
         let result = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/CodexUsageBar/updates/result.txt")
         if let text = try? String(contentsOf: result, encoding: .utf8) {
@@ -80,8 +82,8 @@ final class AppUpdateController: ObservableObject {
     }
     func start() {
         guard timer == nil else { return }
-        check()
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        checkIfDue()
+        timer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkIfDue() }
         }
     }
@@ -101,20 +103,52 @@ final class AppUpdateController: ObservableObject {
             defer { if !Task.isCancelled { checking = false; task = nil } }
             do {
                 let endpoint = include ? URL(string: "https://api.github.com/repos/1078302479/codex-usage-bar/releases?per_page=100")! : Self.endpoint
-                let data = try await fetch(endpoint, limit: 8_000_000)
+                let release: AppRelease?
+                do {
+                    let data = try await fetch(endpoint, limit: 8_000_000)
+                    let releases = include ? try JSONDecoder().decode([AppRelease].self, from: data) : [try JSONDecoder().decode(AppRelease.self, from: data)]
+                    guard let selected = Self.select(releases, current: currentVersion, includePrereleases: include) else {
+                        throw UpdateFailure.invalid("发布信息无效。")
+                    }
+                    release = selected
+                } catch {
+                    // GitHub's latest page covers stable releases only.
+                    guard !include else { throw error }
+                    let request = URLRequest(url: URL(string: "https://github.com/1078302479/codex-usage-bar/releases/latest")!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200,
+                          let fallback = Self.releaseFromPage(response.url) else { throw error }
+                    release = fallback
+                }
                 try Task.checkCancellation()
-                let releases = include ? try JSONDecoder().decode([AppRelease].self, from: data) : [try JSONDecoder().decode(AppRelease.self, from: data)]
-                latest = Self.select(releases, current: currentVersion, includePrereleases: include)
+                latest = release
                 lastChecked = Date()
+                defaults.set(lastChecked, forKey: "updates.last-success.v1")
                 if readyToInstall { status = "已校验，准备安装并重启" }
-                else if available && matchingArchive == nil { status = "发现新版本，但尚未提供当前机型的安装包。" }
+                else if available && matchingArchive == nil { status = "发现新版本，请前往发布页手动下载。" }
                 else { status = available ? "发现新版本 " + (latest?.tag_name ?? "") : "当前通道暂无更新" }
             } catch {
                 guard !Task.isCancelled else { return }
-                lastChecked = Date(); status = "暂时无法检查更新，可稍后重试"
+                status = "暂时无法检查更新，可稍后重试"
             }
         }
     }
+    static func releaseFromPage(_ url: URL?) -> AppRelease? {
+        guard let url, url.scheme == "https", url.host == "github.com", url.user == nil,
+              url.password == nil, url.query == nil, url.fragment == nil else { return nil }
+        let prefix = "/1078302479/codex-usage-bar/releases/tag/"
+        guard url.path.hasPrefix(prefix) else { return nil }
+        let tag = String(url.path.dropFirst(prefix.count))
+        guard AppRelease.version(tag) != nil else { return nil }
+        return AppRelease(tag_name: tag, html_url: url, draft: false, prerelease: false)
+    }
+    var canDownload: Bool {
+        matchingArchive != nil && latest?.assets?.contains(where: {
+            $0.name == "SHA256SUMS.txt" && $0.size <= 100_000 && AppUpdateInstaller.validAsset($0, tag: latest!.tag_name)
+        }) == true
+    }
+    func openReleasePage() { if let url = latest?.safeURL { NSWorkspace.shared.open(url) } }
+    func revealPreparedApp() { if let preparedApp { NSWorkspace.shared.activateFileViewerSelecting([preparedApp]) } }
     private func fetch(_ url: URL, limit: Int) async throws -> Data {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
         request.setValue("CodexUsageBar/" + currentVersion, forHTTPHeaderField: "User-Agent")
@@ -128,26 +162,23 @@ final class AppUpdateController: ObservableObject {
               let sums = release.assets?.first(where: { $0.name == "SHA256SUMS.txt" && AppUpdateInstaller.validAsset($0, tag: release.tag_name) }) else {
             status = "此版本没有匹配当前机型的 ZIP 安装包或校验文件。"; return
         }
-        downloading = true; status = "正在下载 " + asset.name + "…"
+        downloading = true; downloadProgress = 0; status = "正在下载 " + asset.name + "…"
         downloadTask = Task { [weak self] in
             guard let self else { return }
             var directory: URL?
             defer { downloading = false; downloadTask = nil }
             do {
                 let checksums = try await fetch(sums.browser_download_url, limit: 100_000)
+                guard checksums.count == sums.size else { throw UpdateFailure.invalid("校验文件大小不一致。") }
                 let expected = try AppUpdateInstaller.checksum(String(decoding: checksums, as: UTF8.self), filename: asset.name)
                 if let digest = asset.digest, digest != "sha256:" + expected { throw UpdateFailure.invalid("发布资产校验值不一致。") }
                 let dir = FileManager.default.temporaryDirectory.appendingPathComponent("CodexUsageBar-update-" + UUID().uuidString)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
                 directory = dir
-                let request = URLRequest(url: asset.browser_download_url, timeoutInterval: 180)
-                let (downloaded, response) = try await URLSession.shared.download(for: request)
-                guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateFailure.invalid("安装包下载失败，请重试。") }
+                let archive = try await AppUpdateDownload().download(asset, to: dir.appendingPathComponent(asset.name)) { [weak self] value in
+                    Task { @MainActor in self?.downloadProgress = value }
+                }
                 try Task.checkCancellation()
-                let archive = dir.appendingPathComponent(asset.name)
-                try FileManager.default.moveItem(at: downloaded, to: archive)
-                let size = try archive.resourceValues(forKeys: [.fileSizeKey]).fileSize
-                guard size == asset.size else { throw UpdateFailure.invalid("安装包大小不一致，已停止更新。") }
                 status = "正在校验并解压安装包…"
                 let version = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
                 let app = try await Task.detached {
@@ -166,6 +197,12 @@ final class AppUpdateController: ObservableObject {
     func cancelDownload() { downloadTask?.cancel() }
     func install() {
         guard readyToInstall, !busy, let app = preparedApp, let directory = workDirectory else { return }
+        let alert = NSAlert()
+        alert.messageText = "安装更新并重新启动？"
+        alert.informativeText = "将退出 CodexUsageBar 并替换应用，保留账号、本地工作空间与设置。请先保存任务。旧应用将保留为备份。"
+        alert.addButton(withTitle: "安装并重启")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
         installing = true; status = "正在准备安装，请保存任务…"
         do {
             let helper = try AppUpdateInstaller.prepareInstall(app: app, target: Bundle.main.bundleURL, workDirectory: directory, pid: ProcessInfo.processInfo.processIdentifier)

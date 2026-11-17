@@ -67,22 +67,43 @@ enum AppUpdateInstaller {
         guard !paths.isEmpty, paths.count < 50_000 else { throw UpdateFailure.invalid("安装包目录无效。") }
         for path in paths {
             let parts = path.split(separator: "/", omittingEmptySubsequences: false)
-            guard !path.hasPrefix("/"), !parts.contains(".."), !path.contains("\\"),
+            guard !path.hasPrefix("/"), !parts.contains(".."), !parts.contains("."), !path.contains("\\"),
                   path.hasPrefix("CodexUsageBar.app/") || path.hasPrefix("__MACOSX/") else { throw UpdateFailure.invalid("安装包含有不安全路径。") }
         }
+    }
+    static func validateArchiveAttributes(_ listing: String) throws {
+        var count = 0
+        var total: Int64 = 0
+        for line in listing.split(whereSeparator: \.isNewline) {
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            // unzip -Z -l entries start with ten Unix mode characters.
+            guard let mode = fields.first, mode.count == 10 else { continue }
+            guard let kind = mode.first, kind == "-" || kind == "d",
+                  fields.count >= 10, let size = Int64(fields[3]), size >= 0, size <= 250_000_000 else {
+                throw UpdateFailure.invalid("安装包含有链接、特殊文件或无效大小。")
+            }
+            count += 1; total += size
+            guard count <= 10_000, total <= 500_000_000 else { throw UpdateFailure.invalid("安装包解压大小超出限制。") }
+        }
+        guard count > 0 else { throw UpdateFailure.invalid("安装包文件清单无效。") }
     }
     static func unpackAndValidate(archive: URL, directory: URL, version: String) throws -> URL {
         let listing = try run("/usr/bin/unzip", ["-Z", "-1", archive.path])
         try validateArchivePaths(listing)
-        // Reject symlink archives before extraction, preventing escape via link entries.
         let attributes = try run("/usr/bin/unzip", ["-Z", "-l", archive.path])
-        guard !attributes.split(whereSeparator: \.isNewline).contains(where: { $0.hasPrefix("l") }) else { throw UpdateFailure.invalid("安装包含有符号链接，暂不支持自动安装。") }
+        try validateArchiveAttributes(attributes)
         try run("/usr/bin/ditto", ["-x", "-k", archive.path, directory.path])
         let app = directory.appendingPathComponent("CodexUsageBar.app")
         guard let bundle = Bundle(url: app), bundle.bundleIdentifier == bundleID,
               let found = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
               AppRelease.version(found) == AppRelease.version(version), let executable = bundle.executableURL else {
             throw UpdateFailure.invalid("应用身份或版本不匹配，已停止更新。")
+        }
+        for name in ["AppIcon.icns", "LICENSE", "NOTICE"] {
+            let resource = app.appendingPathComponent("Contents/Resources/" + name)
+            guard (try resource.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0 > 0 else {
+                throw UpdateFailure.invalid("更新应用缺少必要资源。")
+            }
         }
         try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
         try run("/usr/bin/lipo", ["-verify_arch", architecture, executable.path])
@@ -109,6 +130,7 @@ while kill -0 "$old_pid" 2>/dev/null; do
   fi
   sleep 0.2
 done
+/usr/bin/codesign --verify --deep --strict "$staged" || fail '安装文件签名验证失败，原版本保留。'
 if ! mv "$target" "$backup"; then fail '无法替换应用，原版本保留，请检查安装目录权限。'; fi
 if ! mv "$staged" "$target"; then
   mv "$backup" "$target" || true

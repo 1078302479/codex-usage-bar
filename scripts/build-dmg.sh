@@ -5,7 +5,8 @@ APP="$ROOT/build/CodexUsageBar.app"
 STAGE="$ROOT/.build/dmg-stage"
 MOUNT="$ROOT/.build/dmg-mount"
 RW="$ROOT/.build/CodexUsageBar-install-rw.dmg"
-OUTPUT="$ROOT/build/CodexUsageBar-0.1.10-mac-arm64.dmg"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+OUTPUT="$ROOT/build/CodexUsageBar-$VERSION-mac-$(uname -m).dmg"
 [[ -d "$APP" ]] || { printf 'Build the app first: bash scripts/build-native.sh\n'; exit 1; }
 export PYTHONPATH="$ROOT/.build/dmg-python${PYTHONPATH:+:$PYTHONPATH}"
 python3 -c 'import ds_store, mac_alias' || {

@@ -34,7 +34,7 @@ This is an independent community project, not an official OpenAI application or 
 
 - Monitor two accounts concurrently; selecting a row updates the menu bar, reset credits and Token activity.
 - One-click alternate-account switching with a client restart, preserving the workspace and conversation list. The active account is listed first; disabling secondary monitoring hides switching.
-- Online update checks at startup and every eight hours, with a new-release entry in the popup and manual checks in settings. Review release notes, download and verify the matching archive, then explicitly install and restart.
+- Online update checks at startup and at most once every 24 hours, with a new-release entry in the popup and manual checks in settings. Review release notes, download and verify the matching archive, then explicitly install and restart.
 
 - Remaining allowance and reset times for independent short-term and weekly windows; actual durations come from the service.
 - Independent remaining-percentage color ranges for short- and long-term menu-bar quotas, including stacked mode. Default text colors remain unchanged.
@@ -89,7 +89,7 @@ Official totals, peak daily usage, streaks, longest turn and a 26-week activity 
 
 ### Menu bar customization and online updates
 
-Customize stacked rows, quotas, reset times, labels, separators and percentage colors. Check stable GitHub updates automatically every eight hours or manually.
+Customize stacked rows, quotas, reset times, labels, separators and percentage colors. Check stable GitHub updates automatically at most once every 24 hours or manually.
 
 <table>
   <tr><th>Menu bar settings</th><th>Updates and quota validation</th></tr>
@@ -143,7 +143,7 @@ The app does not directly read authentication files, persist tokens, or start mo
 
 ### Online software updates
 
-Open **Settings → Connection & Refresh → Software Update** to see the installed version and last check, or check manually. The app checks at startup and every eight hours, catching up after wake. Only stable public releases are considered; drafts and prereleases are excluded.
+Open **Settings → Connection & Refresh → Software Update** to see the installed version and last check, or check manually. The app triggers checks at startup and hourly, skipping automatic checks within 24 hours of the last success. Manual checks bypass this delay. Stable releases are the default; preview releases are opt-in. GitHub API failures fall back to the stable release page for manual downloads.
 
 When a newer version is available, open its in-app release notes. Choose Download and verify; after checksum, bundle identity, version, signature and architecture checks pass, choose Install and restart. Stable releases are the default; preview releases are opt-in. Failed checks/downloads can be retried. The previous app is retained as a backup. No GitHub token or Codex account information is sent.
 
