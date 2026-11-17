@@ -33,8 +33,13 @@ import AppKit
         precondition(decoded == p)
         var legacy = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
         legacy.removeValue(forKey: "primaryColorRules"); legacy.removeValue(forKey: "secondaryColorRules")
+        legacy.removeValue(forKey: "panelCompact"); legacy.removeValue(forKey: "panelFitsScreen")
         let old = try JSONDecoder().decode(Preferences.self, from: JSONSerialization.data(withJSONObject: legacy))
         precondition(old.primaryColorRules == nil && old.secondaryColorRules == nil)
+        precondition(old.panelCompact == nil && old.panelFitsScreen == nil)
+        p.panelCompact = true; p.panelFitsScreen = true
+        let orbitPreferences = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(p))
+        precondition(orbitPreferences.panelCompact == true && orbitPreferences.panelFitsScreen == true)
         print("PASS: menu color boundaries, overlap priority, percent-only styling, independent identical values, unknown/expired quotas, stacked/no-icon colors, persistence and legacy defaults")
     }
 }

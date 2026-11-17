@@ -14,19 +14,24 @@ struct TokenActivityView: View {
                     .help("当前账号的官方 Token 活动统计；时间为最近一次统计更新时间")
             }
             if state.verified, let activity = state.tokenActivity {
-                VStack(spacing: 12) {
-                    HStack(alignment: .top, spacing: 16) {
-                        headline("累计 Token", TokenActivity.count(activity.summary?.lifetimeTokens), symbol: "sum")
-                        headline("单日峰值", TokenActivity.count(activity.summary?.peakDailyTokens), symbol: "chart.line.uptrend.xyaxis")
-                    }
-                    Divider()
-                    HStack(alignment: .top, spacing: 6) {
-                        compact("当前连续", TokenActivity.days(activity.summary?.currentStreakDays))
-                        compact("最长连续", TokenActivity.days(activity.summary?.longestStreakDays))
-                        compact("最长单轮", TokenActivity.duration(activity.summary?.longestRunningTurnSec))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("累计 Token").font(.system(size: 12)).foregroundStyle(PanelPalette.secondary)
+                    HStack {
+                        Text(TokenActivity.count(activity.summary?.lifetimeTokens)).font(.system(size: 34, weight: .medium))
+                        Spacer()
+                        Text("官方活动统计").font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
                     }
                 }
-                .padding(.vertical, 8)
+                Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+                    GridRow {
+                        compact("单日峰值", TokenActivity.count(activity.summary?.peakDailyTokens))
+                        compact("最长单轮", TokenActivity.duration(activity.summary?.longestRunningTurnSec))
+                    }
+                    GridRow {
+                        compact("当前连续", TokenActivity.days(activity.summary?.currentStreakDays))
+                        compact("最长连续", TokenActivity.days(activity.summary?.longestStreakDays))
+                    }
+                }
                 if activity.dailyUsageBuckets != nil {
                     HStack {
                         Text("每日用量").font(.system(size: 11, weight: .medium))
@@ -44,21 +49,17 @@ struct TokenActivityView: View {
             if let error = state.activityError { Text(error).font(.system(size: 10)).foregroundStyle(PanelPalette.warning) }
         }
         .padding(.top, 12)
-        .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.09)).frame(height: 1) }
-        .padding(.horizontal, 20).padding(.bottom, 10)
-    }
-    private func headline(_ title: String, _ value: String, symbol: String) -> some View {
-        VStack(spacing: 5) {
-            Text(value).font(.system(size: 24, weight: .semibold, design: .rounded)).monospacedDigit()
-            Text(title).font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
-        }.frame(maxWidth: .infinity).accessibilityElement(children: .combine)
+
+        .padding(.horizontal, OrbitLayout.inset).padding(.bottom, 10)
     }
     private func compact(_ title: String, _ value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value).font(.system(size: 11, weight: .medium)).monospacedDigit()
-                .lineLimit(1).minimumScaleFactor(0.85)
-            Text(title).font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-        }.frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
+            Text(value).font(.system(size: 19, weight: .medium)).monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.75)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12).background(PanelPalette.background, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(PanelPalette.border) }
         .accessibilityElement(children: .combine)
     }
 }

@@ -95,6 +95,9 @@ struct QuotaSnapshot: Codable, Sendable, Equatable {
     let planType: String?
     let buckets: [QuotaBucket]
     var accountName: String? = nil
+    var accountEmail: String? = nil
+
+    var displayEmail: String { accountEmail ?? accountLabel }
     var resetCredits: ResetCreditSummary? = nil
 }
 
@@ -136,6 +139,8 @@ struct PercentageColorRule: Codable, Sendable, Equatable, Identifiable {
 }
 
 struct Preferences: Codable, Sendable, Equatable {
+    var panelCompact: Bool? = nil
+    var panelFitsScreen: Bool? = nil
     var primaryColorRules: [PercentageColorRule]? = nil
     var secondaryColorRules: [PercentageColorRule]? = nil
     // Optional for backwards-compatible decoding of existing preferences.v1.

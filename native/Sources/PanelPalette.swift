@@ -8,13 +8,15 @@ enum PanelPalette {
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
         })
     }
-    static var accountAccent: Color { adaptive(NSColor(srgbRed: 0.70, green: 0.73, blue: 0.90, alpha: 1), light: NSColor(srgbRed: 0.45, green: 0.43, blue: 0.76, alpha: 1)) }
-    static var background: Color { adaptive(NSColor(srgbRed: 0.16, green: 0.175, blue: 0.195, alpha: 1), light: .windowBackgroundColor) }
-    static var primary: Color { adaptive(NSColor(srgbRed: 0.88, green: 0.895, blue: 0.92, alpha: 1), light: .labelColor) }
-    static var secondary: Color { adaptive(NSColor(srgbRed: 0.69, green: 0.72, blue: 0.77, alpha: 1), light: .secondaryLabelColor) }
-    static var link: Color { adaptive(NSColor(srgbRed: 0.60, green: 0.71, blue: 0.88, alpha: 1), light: .controlAccentColor) }
-    static var warning: Color { adaptive(NSColor(srgbRed: 0.87, green: 0.68, blue: 0.43, alpha: 1), light: .systemOrange) }
-    static var ringTrack: Color { adaptive(NSColor(srgbRed: 0.23, green: 0.25, blue: 0.28, alpha: 1), light: .labelColor.withAlphaComponent(0.065)) }
-    static var shortRing: Color { adaptive(NSColor(srgbRed: 0.62, green: 0.65, blue: 0.83, alpha: 1), light: NSColor(srgbRed: 0.62, green: 0.64, blue: 0.96, alpha: 1)) }
-    static var longRing: Color { adaptive(NSColor(srgbRed: 0.53, green: 0.66, blue: 0.73, alpha: 1), light: NSColor(srgbRed: 0.55, green: 0.70, blue: 0.81, alpha: 1)) }
+    static var accountAccent: Color { longRing }
+    static var background: Color { adaptive(NSColor(srgbRed: 0.165, green: 0.169, blue: 0.192, alpha: 1), light: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)) }
+    static var primary: Color { adaptive(NSColor(srgbRed: 0.933, green: 0.929, blue: 0.949, alpha: 1), light: NSColor(srgbRed: 0.161, green: 0.169, blue: 0.188, alpha: 1)) }
+    static var secondary: Color { adaptive(NSColor(srgbRed: 0.65, green: 0.64, blue: 0.70, alpha: 1), light: NSColor(srgbRed: 0.49, green: 0.49, blue: 0.54, alpha: 1)) }
+    static var link: Color { primary }
+    static var warning: Color { adaptive(NSColor(srgbRed: 0.89, green: 0.72, blue: 0.47, alpha: 1), light: NSColor(srgbRed: 0.65, green: 0.43, blue: 0.16, alpha: 1)) }
+    static var ringTrack: Color { adaptive(NSColor(srgbRed: 0.23, green: 0.23, blue: 0.26, alpha: 1), light: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1)) }
+    static var shortRing: Color { adaptive(NSColor(srgbRed: 0.90, green: 0.64, blue: 0.45, alpha: 1), light: NSColor(srgbRed: 0.875, green: 0.55, blue: 0.33, alpha: 1)) }
+    static var longRing: Color { adaptive(NSColor(srgbRed: 0.71, green: 0.64, blue: 0.89, alpha: 1), light: NSColor(srgbRed: 0.60, green: 0.54, blue: 0.79, alpha: 1)) }
+    static var surface: Color { adaptive(NSColor(srgbRed: 0.19, green: 0.195, blue: 0.22, alpha: 1), light: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.97, alpha: 1)) }
+    static var border: Color { ringTrack }
 }

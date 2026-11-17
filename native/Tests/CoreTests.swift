@@ -12,6 +12,14 @@ import Foundation
         let long = QuotaWindow(usedPercent: 3, windowDurationMins: 10080, resetsAt: now.addingTimeInterval(86400).timeIntervalSince1970)
         let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: short, secondary: long, planType: "plus", spendControlReached: false, rateLimitReachedType: nil)
         let snapshot = QuotaSnapshot(observedAt: now, accountScope: "account-a", accountLabel: "te***@example.com", planType: "plus", buckets: [bucket])
+        let legacyData = try JSONEncoder().encode(snapshot)
+        let legacySnapshot = try JSONDecoder().decode(QuotaSnapshot.self, from: legacyData)
+        check(legacySnapshot.accountEmail == nil && legacySnapshot.displayEmail == snapshot.accountLabel, "cached masked labels remain readable without email")
+        var complete = snapshot
+        complete.accountEmail = "test.account@example.com"
+        let completeData = try JSONEncoder().encode(complete)
+        let restoredEmail = try JSONDecoder().decode(QuotaSnapshot.self, from: completeData)
+        check(restoredEmail.displayEmail == "test.account@example.com" && restoredEmail.accountLabel == snapshot.accountLabel, "full email survives cache without changing masked labels")
         let activity = try JSONDecoder().decode(TokenActivity.self, from: Data(#"{"summary":{"lifetimeTokens":1500000000,"peakDailyTokens":250000000,"longestRunningTurnSec":57120,"currentStreakDays":2,"longestStreakDays":5},"dailyUsageBuckets":[{"startDate":"2026-10-19","tokens":0},{"startDate":"2026-10-20","tokens":25},{"startDate":"2026-10-20","tokens":30},{"startDate":"2026-02-30","tokens":99},{"startDate":"2026-10-18","tokens":null}]}"#.utf8))
         check(TokenActivity.count(activity.summary?.lifetimeTokens) == "15亿", "official lifetime summary formatting")
         check(TokenActivity.duration(activity.summary?.longestRunningTurnSec) == "15 小时 52 分", "longest turn preserves official seconds")

@@ -62,6 +62,9 @@ private actor CardFixtureClient: QuotaClient {
         return (ResetCreditReminderController(defaults: defaults, center: center, clock: { instant }), defaults, suite)
     }
     @MainActor static func main() async throws {
+        check(ResetCreditSummary.compactRemainingLabel(until: instant, now: instant) == "已到期，待核验", "Expired cards never show positive time")
+        check(ResetCreditSummary.compactRemainingLabel(until: instant.addingTimeInterval(1), now: instant) == "约 1 分钟", "Subminute countdown is explicit")
+        check(ResetCreditSummary.compactRemainingLabel(until: instant.addingTimeInterval(13 * 86400 + 18 * 3600), now: instant) == "约 13 天 18 小时", "Compact time retains days and hours")
         try decoding()
         planning()
         let threeDays = snapshot([credit("near", expiry: instant.addingTimeInterval(1)), credit("boundary", expiry: instant.addingTimeInterval(259200)), credit("outside", expiry: instant.addingTimeInterval(259201))], count: 3).resetCredits!

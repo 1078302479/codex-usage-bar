@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import AppKit
 
-enum SettingsTab: Hashable { case menuBar, connection, reminders, appearance }
+enum SettingsTab: String, CaseIterable, Hashable { case accounts, menuBar, appearance, connection, reminders, about }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -75,6 +75,10 @@ final class AppState: ObservableObject {
             onDisplayChange?()
         }
     }
+    @Published var orbitActivitySelected = false
+    @Published var accountPickerPresented = false
+    @Published var comparisonsExpanded = true
+    @Published var pendingSwitchConfirmation: String?
     @Published var managingAccounts = false
     @Published var pendingAccountDeletion: String?
     @Published private(set) var deletingAccountID: String?
@@ -86,8 +90,8 @@ final class AppState: ObservableObject {
     var accountEntries: [(id: String, state: AppState)] {
         (localAccountRemoved ? [] : [("primary", self)]) + (secondAccount.map { [("secondary", $0)] } ?? []) + additionalAccountIDs.compactMap { id in additionalAccounts[id].map { (id, $0) } }
     }
-    var expandsCreditDetailsByDefault: Bool { homeAccounts.count >= 3 }
-    var showsTokenActivity: Bool { (1...2).contains(homeAccounts.count) }
+    var expandsCreditDetailsByDefault: Bool { false }
+    var showsTokenActivity: Bool { !homeAccounts.isEmpty }
     var homeAccounts: [(id: String, state: AppState)] {
         orderedAccounts.filter { $0.state.snapshot?.accountScope != nil }
     }
@@ -97,6 +101,18 @@ final class AppState: ObservableObject {
         let legacy = showingSecondAccountDetails ? (secondAccount ?? self) : self
         if managingAccounts || legacy.snapshot?.accountScope != nil { return legacy }
         return homeAccounts.first(where: { $0.id == dualClient.activeProfileID })?.state ?? homeAccounts.first?.state ?? self
+    }
+    /// Browsing another account in the panel never changes the menu bar's source.
+    var menuBarAccount: AppState {
+        accountEntries.first(where: { $0.id == dualClient.activeProfileID })?.state ?? self
+    }
+    private func restoreActiveAccountView() {
+        let activeID = accountEntries.first(where: { $0.id == dualClient.activeProfileID })?.id
+        if selectedAccountID != activeID { selectedAccountID = activeID }
+        let secondary = activeID == "secondary"
+        if showingSecondAccountDetails != secondary { showingSecondAccountDetails = secondary }
+        accountPickerPresented = false
+        pendingSwitchConfirmation = nil
     }
     func accountRole(_ id: String) -> String {
         guard dualClient.detected else { return "登录待确认" }
@@ -202,6 +218,7 @@ final class AppState: ObservableObject {
         didSet {
             if let data = try? JSONEncoder().encode(preferences) { defaults.set(data, forKey: "preferences.v1") }
             if oldValue.refreshMode != preferences.refreshMode { configurePolling() }
+            if oldValue.panelFitsScreen != preferences.panelFitsScreen { panelPreferredHeight = nil; onPanelResize?(nil) }
             if oldValue.selectedBucket != preferences.selectedBucket { configureResetCheck() }
             if oldValue.cliPath != preferences.cliPath {
                 cancelSignIn()
@@ -533,6 +550,7 @@ final class AppState: ObservableObject {
     }
 
     func setPanelVisible(_ visible: Bool) {
+        if !visible && codexHome == nil { restoreActiveAccountView() }
         guard panelVisible != visible else { return }
         panelVisible = visible
         secondAccount?.setPanelVisible(visible)

@@ -8,17 +8,15 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
-## v0.1.10: multiple accounts and in-app updates
+## v0.1.12: redesigned UI and focus on the active account
 
-Add multiple accounts and manage them directly in the popup or Settings. The desktop client's current user is primary. Plus backups sort first, with insertion order preserved within each tier. Deletion requires confirmation, shows progress, and removes the entry immediately on success. Unsigned entries stay in management views only.
+The native popup and Settings now use consistent modular layouts, full-email account cards, a clearer account dropdown, quota bars, reset-credit timelines and Token activity. Browsing another account does not change the desktop login; only Switch and restart does.
 
-Each backup card has a switch action; switching restarts the client, so save work first. Credentials remain separate while local projects, chats and provider configuration share one workspace. Switching does not fetch cloud projects/chats or restore projects from another account cache. Existing secondary files are backed up rather than imported.
+Account browsing lasts for the current popup session. Closing restores the active login, and the menu bar always follows that login. Token activity remains available with more accounts; reset-credit details start collapsed. Free accounts show their applicable quota period.
 
-With 1–2 signed-in accounts, Token activity is shown and credit details start collapsed. With 3+, activity is hidden and details start expanded. Free accounts show one quota bar.
+Check for updates in Settings, review the release, download and verify, then explicitly install and restart. The old bundle is retained as a backup. v0.1.8 and earlier require one manual upgrade to obtain the updater.
 
-Review release notes in-app, download the matching ZIP, verify it, then explicitly install and restart. The old bundle is retained for rollback; replacement or launch-request failures attempt restoration. Stable releases are the default; preview releases are opt-in. v0.1.8 and earlier require one manual upgrade to obtain this updater.
-
-[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.10.md) · [Account switching](docs/account-switch.md)
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.12.md) · [Account switching](docs/account-switch.md)
 
 ## v0.1.7: account-switch project visibility fix
 

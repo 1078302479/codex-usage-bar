@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     private func updatePresentation() {
         guard let button = statusItem?.button else { return }
-        let displayed = state.displayedAccount
+        let displayed = state.menuBarAccount
         let lines = QuotaPresentation.stackedLines(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
         let colors = MenuBarRenderer.stackedColors(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
         let imageKey = MenuImageKey(stacked: state.preferences.isStacked,
@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             }
         }
         menuImageKey = imageKey
-        button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : ("CodexUsageBar · " + state.accountRole(state.selectedAccountID ?? (state.showingSecondAccountDetails ? "secondary" : "primary"))), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,
+        button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : ("CodexUsageBar · " + state.accountRole(state.dualClient.activeProfileID ?? "primary")), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,
                           displayed.statusDetail, displayed.timestampLabel, displayed.watchDescription].joined(separator: "\n")
         button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : displayed.menuTitle))
         let appearance: NSAppearance?
@@ -203,9 +203,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let maximum = max(160, available - 24)
         if let requestedHeight { state.panelPreferredHeight = requestedHeight }
         // Header, footer and resize grip remain outside the scrollable content.
-        let desired = state.panelPreferredHeight ?? (state.panelContentHeight > 0 ? state.panelContentHeight + 94 : 820)
+        let automatic = state.preferences.panelFitsScreen == true ? min(maximum, OrbitLayout.defaultPanelHeight) : (state.panelContentHeight > 0 ? min(OrbitLayout.defaultPanelHeight, state.panelContentHeight + 94) : OrbitLayout.defaultPanelHeight)
+        let desired = state.panelPreferredHeight ?? automatic
         let height = min(maximum, max(240, desired))
-        let width: CGFloat = state.secondAccount == nil ? 390 : 460
+        let width = OrbitLayout.panelWidth
         guard abs(state.panelHeight - height) > 0.5 || popover.contentSize.height != height || popover.contentSize.width != width else { return }
         state.panelHeight = height
         let size = NSSize(width: width, height: height)

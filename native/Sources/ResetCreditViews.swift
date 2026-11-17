@@ -6,145 +6,108 @@ struct ResetCreditSectionView: View {
     let openSettings: () -> Void
     var allowsReminders = true
     var initiallyExpanded = false
+    private var summary: ResetCreditSummary? { state.verified ? state.snapshot?.resetCredits : nil }
+    private var earliest: Date? { summary?.availableDetails.compactMap(\.expiryDate).filter { $0 > state.now }.min() }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("重置卡", systemImage: "ticket").font(.system(size: 12, weight: .semibold))
+                Text("重置卡").font(.system(size: 12, weight: .semibold))
                 Spacer()
-                if state.verified, let count = state.snapshot?.resetCredits?.availableCount {
-                    Text("可用 \(count) 张").font(.system(size: 12, weight: .medium)).monospacedDigit()
-                } else { Text("待确认").font(.system(size: 10)).foregroundStyle(PanelPalette.secondary) }
+                Button { state.settingsTab = .reminders; openSettings() } label: { Label("提醒设置", systemImage: "bell") }
+                    .buttonStyle(OrbitActionStyle())
+                    .help(allowsReminders ? "设置当前登录账号的到期提醒" : "提醒跟随客户端当前登录账号，不跟随正在查看的备用账号")
             }
-            if !state.verified {
-                Text("核验成功后显示当前账号的重置卡。")
-                    .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
-            } else if let summary = state.snapshot?.resetCredits {
-                let expiring = summary.expiringWithinThreeDays(now: state.now)
-                HStack {
-                    Text("未来 72 小时内").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-                    Spacer()
-                    Label(expiring.complete ? "3 天内到期 \(expiring.count) 张" : (expiring.count > 0 ? "3 天内已知 \(expiring.count) 张到期" : "3 天内到期待确认"), systemImage: "hourglass")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(expiring.count > 0 ? PanelPalette.warning : PanelPalette.secondary)
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .background((expiring.count > 0 ? PanelPalette.warning : PanelPalette.secondary).opacity(0.08), in: Capsule())
-                }
-                if let earliest = summary.availableDetails.compactMap(\.expiryDate).filter({ $0 > state.now }).min() {
-                    expiryCard(earliest)
-                }
-                if summary.credits == nil {
-                    Text("服务暂未返回卡片到期明细，无法安排过期提醒。")
-                        .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
-                } else if !summary.availableDetails.isEmpty {
+            if let summary {
+                if let expiry = earliest {
                     HStack {
-                        Button { state.resetCreditsExpanded.toggle() } label: {
-                            HStack(spacing: 6) {
-                                Text("卡片明细").font(.system(size: 10))
-                                Image(systemName: state.resetCreditsExpanded ? "chevron.up" : "chevron.down").font(.system(size: 9))
-                            }
-                        }.buttonStyle(.plain).foregroundStyle(PanelPalette.link)
-                        .accessibilityLabel("卡片明细")
-                        .accessibilityValue(state.resetCreditsExpanded ? "已展开" : "已折叠")
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("最近一张将在").font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
+                            Text(ResetCreditSummary.compactRemainingLabel(until: expiry, now: state.now))
+                                .font(.system(size: 24, weight: .medium)).monospacedDigit().tracking(-0.8)
+                                .foregroundStyle(expiry.timeIntervalSince(state.now) <= 86400 ? PanelPalette.warning : PanelPalette.primary)
+                            Text("后到期 · " + ResetCreditSummary.expiryLabel(expiry))
+                                .font(.system(size: 9)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
+                        }
+                        Spacer(minLength: 10)
+                        VStack(spacing: 2) {
+                            Text(summary.availableCount.map(String.init) ?? "--").font(.system(size: 25, weight: .medium)).monospacedDigit()
+                            Text(summary.availableCount == nil ? "数量待确认" : "张可用").font(.system(size: 8)).foregroundStyle(PanelPalette.secondary)
+                        }.frame(width: 52, height: 52).background(PanelPalette.background, in: Circle())
+                            .overlay { Circle().strokeBorder(PanelPalette.border) }
+                    }
+                } else {
+                    Text(summary.availableCount == 0 ? "当前没有可用重置卡。" : "可用 \(summary.availableCount.map(String.init) ?? "待确认") 张 · 到期时间待核验")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                if !summary.availableDetails.isEmpty {
+                    timeline(Array(summary.availableDetails.prefix(3)))
+                    HStack {
+                        Text(expiringCaption(summary)).font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
                         Spacer()
-                        reminderButton
-                    }.padding(.vertical, 4)
+                        Button { state.resetCreditsExpanded.toggle() } label: {
+                            Label(state.resetCreditsExpanded ? "收起明细" : "卡片明细", systemImage: state.resetCreditsExpanded ? "chevron.up" : "chevron.down")
+                        }.buttonStyle(OrbitActionStyle()).accessibilityValue(state.resetCreditsExpanded ? "已展开" : "已折叠")
+                    }
                     if state.resetCreditsExpanded {
                         VStack(spacing: 0) {
                             ForEach(Array(summary.availableDetails.enumerated()), id: \.element.id) { index, card in
-                                if index > 0 { Divider().padding(.horizontal, 10) }
-                                creditRow(card, index: index)
+                                if index > 0 { Divider() }
+                                detail(card, index: index)
                             }
                         }
-                        .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1) }
                     }
-                    if (summary.availableCount ?? 0) > summary.availableDetails.count {
-                        Text("部分卡片明细未返回；仅为已知到期时间的卡片安排提醒。")
-                            .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
-                    }
-                } else {
-                    Text(summary.availableCount == 0 ? "当前没有可用重置卡。" : "尚无可用的到期明细。")
+                }
+                if summary.credits == nil || (summary.availableCount ?? 0) > summary.availableDetails.count {
+                    Text("部分卡片明细未返回；只展示已知日期，不推算到期时间。")
                         .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
                 }
-                if state.isStale { Text("以上为上次核验记录，请刷新确认。").font(.system(size: 10)).foregroundStyle(PanelPalette.warning) }
+                if state.isStale { Text("以上为上次核验记录，请重新核验。").font(.system(size: 10)).foregroundStyle(PanelPalette.warning) }
             } else {
-                Text("当前服务未返回重置卡信息，不代表可用数量为零。")
-                    .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
-            }
-            if !state.verified || state.snapshot?.resetCredits?.availableDetails.isEmpty != false {
-                reminderButton
+                Text(state.verified ? "服务暂未返回重置卡信息，不代表可用数量为零。" : "成功核验后显示当前账号的重置卡。")
+                    .font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
             }
         }
-        .onAppear {
-            state.applyCreditDetailsDefault(expanded: initiallyExpanded)
-        }
-        .onChange(of: initiallyExpanded) { _, expanded in
-            state.applyCreditDetailsDefault(expanded: expanded)
-        }
-        .padding(.horizontal, 20).padding(.vertical, 15)
-        .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.09)).frame(height: 1) }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(PanelPalette.background, in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(PanelPalette.border) }
+        .padding(.horizontal, OrbitLayout.inset)
     }
-
-    private func creditRow(_ card: ResetCredit, index: Int) -> some View {
-        let expiry = card.expiryDate
-        let urgent = expiry.map { $0.timeIntervalSince(state.now) <= 86400 } ?? false
-        return HStack(spacing: 9) {
-            Image(systemName: urgent ? "hourglass" : "ticket")
-                .font(.system(size: 12)).foregroundStyle(urgent ? PanelPalette.warning : PanelPalette.secondary)
-                .frame(width: 16)
+    private func expiringCaption(_ summary: ResetCreditSummary) -> String {
+        let result = summary.expiringWithinThreeDays(now: state.now)
+        if result.complete { return result.count == 0 ? "未来 72 小时内无到期卡片" : "3 天内 \(result.count) 张到期" }
+        return result.count == 0 ? "未来 72 小时到期情况待确认" : "已知 3 天内 \(result.count) 张到期"
+    }
+    private func timeline(_ cards: [ResetCredit]) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                VStack(alignment: .leading, spacing: 6) {
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(PanelPalette.border).frame(height: 1)
+                        Circle().fill(index == 0 ? PanelPalette.shortRing : PanelPalette.surface)
+                            .frame(width: index == 0 ? 7 : 5, height: index == 0 ? 7 : 5)
+                            .overlay { Circle().strokeBorder(index == 0 ? PanelPalette.shortRing : PanelPalette.secondary.opacity(0.4)) }
+                    }.frame(height: 9)
+                    Text(card.expiryDate.map { String(ResetCreditSummary.expiryLabel($0).dropFirst(5).prefix(5)) } ?? "日期待确认")
+                        .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                    Text(card.expiryDate.map { QuotaPresentation.time($0) + ($0 <= state.now ? " 已到期，待核验" : " 到期") } ?? "未返回日期")
+                        .font(.system(size: 9)).foregroundStyle(PanelPalette.secondary).lineLimit(2)
+                }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
+            }
+        }.padding(.top, 5).help("仅展示最近三张已知卡片，完整日期见卡片明细；时间为北京时间")
+    }
+    private func detail(_ card: ResetCredit, index: Int) -> some View {
+        HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text("重置卡 \(index + 1)").font(.system(size: 10, weight: .medium))
-                Text(expiry.map { ResetCreditSummary.expiryLabel($0) } ?? "到期时间未返回")
+                Text(card.expiryDate.map { ResetCreditSummary.expiryLabel($0) + " 到期 · 北京时间" } ?? "到期时间未返回")
                     .font(.system(size: 9)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
             }
-            Spacer(minLength: 4)
-            if let expiry {
-                Text(expiry <= state.now ? "已到期，待核验" : ResetCreditSummary.remainingLabel(until: expiry, now: state.now))
-                    .font(.system(size: 9, weight: .medium)).monospacedDigit()
-                    .foregroundStyle(urgent ? PanelPalette.warning : PanelPalette.secondary)
-            } else {
-                Text("待确认").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-            }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 9)
-        .accessibilityElement(children: .combine)
-        .help("到期时间为北京时间")
+            Spacer()
+            Text(card.expiryDate.map { ResetCreditSummary.remainingLabel(until: $0, now: state.now) } ?? "待确认")
+                .font(.system(size: 10)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
+        }.padding(.vertical, 11).accessibilityElement(children: .combine)
     }
-
-    private var reminderButton: some View {
-        Group {
-            if allowsReminders {
-                Button { state.settingsTab = .reminders; openSettings() } label: {
-                    Label("提醒设置", systemImage: "bell").font(.system(size: 10))
-                }.buttonStyle(.plain).foregroundStyle(PanelPalette.link)
-                    .accessibilityLabel("设置重置卡到期提醒")
-            } else {
-                Text("备用账号不发送到期通知").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-            }
-        }
-    }
-
-    private func expiryCard(_ expiry: Date) -> some View {
-        let urgent = expiry.timeIntervalSince(state.now) <= 86400
-        let accent = urgent ? PanelPalette.warning : PanelPalette.link
-        return HStack(spacing: 12) {
-            Image(systemName: "ticket.fill").font(.system(size: 20)).foregroundStyle(accent)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(ResetCreditSummary.remainingLabel(until: expiry, now: state.now))
-                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
-                Text(ResetCreditSummary.expiryLabel(expiry) + " 到期（北京时间）")
-                    .font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-                if urgent { Text("记得按需使用").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary) }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.065), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(alignment: .leading) { UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8).fill(accent.opacity(0.7)).frame(width: 3) }
-    }
-
 }
 
 @MainActor

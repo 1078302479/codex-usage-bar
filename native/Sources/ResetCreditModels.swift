@@ -63,6 +63,13 @@ struct ResetCreditSummary: Codable, Equatable, Sendable {
         let complete = availableCount.map { $0 == details.count && knownDates.count == details.count } ?? false
         return (count, complete)
     }
+    static func compactRemainingLabel(until expiry: Date, now: Date) -> String {
+        let seconds = expiry.timeIntervalSince(now)
+        guard seconds > 0 else { return "已到期，待核验" }
+        if seconds < 3600 { return "约 \(max(1, Int(ceil(seconds / 60)))) 分钟" }
+        let hours = Int(seconds / 3600)
+        return hours >= 24 ? "约 \(hours / 24) 天 \(hours % 24) 小时" : "约 \(hours) 小时"
+    }
     static func remainingLabel(until expiry: Date, now: Date) -> String {
         let remaining = expiry.timeIntervalSince(now)
         guard remaining > 0 else { return "已到期" }

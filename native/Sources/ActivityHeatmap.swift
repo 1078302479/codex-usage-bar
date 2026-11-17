@@ -80,8 +80,8 @@ final class ActivityHeatmapView: NSView {
         guard days.count == 182 else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let palette: [NSColor] = dark
-            ? [NSColor(white: 0.25, alpha: 1), NSColor(red: 0.29, green: 0.34, blue: 0.43, alpha: 1), NSColor(red: 0.36, green: 0.44, blue: 0.56, alpha: 1), NSColor(red: 0.44, green: 0.55, blue: 0.69, alpha: 1), NSColor(red: 0.58, green: 0.68, blue: 0.81, alpha: 1)]
-            : [NSColor(white: 0.91, alpha: 1), NSColor(red: 0.79, green: 0.86, blue: 0.97, alpha: 1), NSColor(red: 0.53, green: 0.69, blue: 0.93, alpha: 1), NSColor(red: 0.30, green: 0.52, blue: 0.85, alpha: 1), NSColor(red: 0.14, green: 0.36, blue: 0.70, alpha: 1)]
+            ? [NSColor(white: 0.21, alpha: 1), NSColor(red: 0.37, green: 0.33, blue: 0.46, alpha: 1), NSColor(red: 0.48, green: 0.41, blue: 0.59, alpha: 1), NSColor(red: 0.60, green: 0.50, blue: 0.73, alpha: 1), NSColor(red: 0.71, green: 0.62, blue: 0.85, alpha: 1)]
+            : [NSColor(white: 0.965, alpha: 1), NSColor(red: 0.88, green: 0.85, blue: 0.94, alpha: 1), NSColor(red: 0.76, green: 0.70, blue: 0.88, alpha: 1), NSColor(red: 0.65, green: 0.56, blue: 0.80, alpha: 1), NSColor(red: 0.50, green: 0.39, blue: 0.69, alpha: 1)]
         let peak = values.values.max() ?? 0
         var previousMonth = ""
         for week in 0..<26 {

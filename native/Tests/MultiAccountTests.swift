@@ -174,10 +174,13 @@ private actor ProfileClient: QuotaClient {
             entry.state.snapshot = QuotaSnapshot(observedAt: Date(), accountScope: "user-\(index)", accountLabel: "User \(index)", planType: "plus", buckets: [])
             entry.state.verified = true
         }
-        precondition(!state.showsTokenActivity, "Three or more signed-in accounts hide activity")
-        precondition(state.expandsCreditDetailsByDefault)
+        precondition(state.showsTokenActivity, "All signed-in account counts retain activity")
+        precondition(!state.expandsCreditDetailsByDefault)
         state.applyCreditDetailsDefault(expanded: state.expandsCreditDetailsByDefault)
-        precondition(state.resetCreditsExpanded)
+        precondition(!state.resetCreditsExpanded)
+        state.resetCreditsExpanded = true
+        state.applyCreditDetailsDefault(expanded: false)
+        precondition(state.resetCreditsExpanded, "Account count changes preserve manual expansion")
         let third = state.accountEntries[2]
         precondition(state.dualClient.confirmProfile(scope: "user-2"))
         precondition(state.orderedAccounts.first?.id == third.id)
@@ -211,6 +214,16 @@ private actor ProfileClient: QuotaClient {
         precondition(state.dualClient.confirmProfile(scope: "user-1"))
         precondition(state.orderedAccounts.first?.id == "secondary", "Free current user stays primary ahead of Plus backups")
 
+        // Duplicate login identities are valid when profiles have distinct auth homes.
+        let duplicate = state.accountEntries[3]
+        let originalDuplicate = duplicate.state.snapshot
+        duplicate.state.snapshot = secondEntry.state.snapshot
+        precondition(!state.dualClient.confirmProfile(scope: "user-1"), "No hint must leave duplicate identities ambiguous")
+        precondition(!state.dualClient.confirmProfile(scope: "user-1", preferredProfileID: "primary"), "Unrelated home cannot override identity verification")
+        precondition(state.dualClient.confirmProfile(scope: "user-1", preferredProfileID: duplicate.id), "Verified desktop home disambiguates duplicated login")
+        precondition(state.dualClient.activeProfileID == duplicate.id)
+        duplicate.state.snapshot = originalDuplicate
+
         let fixture = "10 1 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n11 10 /fixture/codex -c usagebar_account_id=\"" + third.id + "\" -c sqlite_home=/fixture -c cli_auth_credentials_store=file app-server\n12 11 /fixture/codex app-server"
         precondition(DualClientController.detectProfile(processList: fixture, desktopPIDs: [10]) == third.id)
         await state.stop()
@@ -238,11 +251,33 @@ private actor ProfileClient: QuotaClient {
         first.onDisplayChange = { displayChanges += 1 }
         precondition(first.displayedAccount === first)
         first.showingSecondAccountDetails = true
-        precondition(first.displayedAccount === second && displayChanges == 1, "Selecting B immediately updates the menu source")
-        precondition(first.displayedAccount.menuTitle.contains("20%"), "Selected B menu uses B quota")
+        precondition(first.displayedAccount === second && displayChanges == 1, "Selecting B updates panel details")
+        precondition(first.displayedAccount.menuTitle.contains("20%"), "Selected B details use B quota")
         first.showingSecondAccountDetails = false
         precondition(first.displayedAccount === first && displayChanges == 2)
-        precondition(first.displayedAccount.menuTitle.contains("90%"), "Selected A menu uses A quota")
+        precondition(first.displayedAccount.menuTitle.contains("90%"), "Selected A details use A quota")
+        first.setPanelVisible(true)
+        first.selectedAccountID = "secondary"
+        precondition(first.displayedAccount === second, "Open panel can browse a backup")
+        precondition(first.menuBarAccount === first, "Menu bar stays on active A while browsing B")
+        first.accountPickerPresented = true
+        first.pendingSwitchConfirmation = "secondary"
+        first.setPanelVisible(false)
+        precondition(first.displayedAccount === first && first.selectedAccountID == "primary", "Closing restores active A")
+        precondition(!first.accountPickerPresented && first.pendingSwitchConfirmation == nil, "Closing clears transient account UI")
+        precondition(first.dualClient.confirmProfile(scope: "B"), "Fixture can verify B as actual active account")
+        first.setPanelVisible(true)
+        first.selectedAccountID = "primary"
+        precondition(first.displayedAccount === first && first.menuBarAccount === second, "Browsing A never changes active B menu bar")
+        first.setPanelVisible(false)
+        precondition(first.displayedAccount === second && first.selectedAccountID == "secondary", "Closing restores active B instead of assuming primary")
+        first.setPanelVisible(true)
+        precondition(first.displayedAccount === second, "Reopening starts with active B")
+        first.setPanelVisible(false)
+        precondition(first.dualClient.confirmProfile(scope: "A"))
+        // Restore the original uncertain-state fixture for the remaining restart tests.
+        first.dualClient.restartSucceeded(secondary: false, label: "Fixture A")
+        first.selectedAccountID = nil
         precondition(first.dualClient.roleLabel(secondary: false) == "登录待确认")
         precondition(first.dualClient.orderedSecondary == [false, true])
         first.dualClient.selectedSecondary = true

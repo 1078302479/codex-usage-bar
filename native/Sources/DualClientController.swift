@@ -213,7 +213,7 @@ final class DualClientController: ObservableObject {
             detecting = false
             guard !isSwitching else { return }
             if !profileList.isEmpty {
-                guard confirmProfile(scope: scope) else {
+                guard confirmProfile(scope: scope, preferredProfileID: result) else {
                     detected = false; onAccountUncertain?(); return
                 }
                 return
@@ -226,10 +226,17 @@ final class DualClientController: ObservableObject {
         }
     }
     @discardableResult
-    func confirmProfile(scope: String?) -> Bool {
+    func confirmProfile(scope: String?, preferredProfileID: String? = nil) -> Bool {
         guard let scope else { return false }
         let matches = (profiles?() ?? []).filter { $0.scope == scope }
-        guard matches.count == 1, let match = matches.first else { return false }
+        // The same login can be saved in multiple monitoring profiles. The desktop
+        // backend identifies its login home; accept that hint only after its live
+        // account/read identity matches the profile's independently verified scope.
+        let match: (id: String, home: URL?, scope: String?)?
+        if matches.count == 1 { match = matches.first }
+        else if let preferredProfileID { match = matches.first { $0.id == preferredProfileID } }
+        else { match = nil }
+        guard let match else { return false }
         let changed = !detected || activeProfileID != match.id
         activeProfileID = match.id
         defaults.set(match.id, forKey: "execution-account.profile.v1")

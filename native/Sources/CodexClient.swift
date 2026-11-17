@@ -159,7 +159,7 @@ actor CodexClient: QuotaClient {
         if changed { handler?(.quotaChanged) }
         return QuotaSnapshot(observedAt: Date(), accountScope: after?.scopeKey, accountLabel: after?.maskedLabel ?? "Codex 当前登录",
                              planType: after?.planType ?? buckets.first?.planType, buckets: buckets,
-                             accountName: after?.name,
+                             accountName: after?.name, accountEmail: after?.email,
                              resetCredits: response.rateLimitResetCredits)
     }
 
