@@ -121,7 +121,7 @@ struct ResetCreditReminderSettingsView: View {
                 Toggle("剩余额度达到阈值时提醒", isOn: Binding(get: { lowQuota.enabled }, set: { value in
                     Task { await lowQuota.setEnabled(value) }
                 })).disabled(lowQuota.isUpdating)
-                Picker("提醒阈值", selection: Binding(get: { lowQuota.threshold }, set: lowQuota.setThreshold)) {
+                Picker("提醒阈值", selection: Binding(get: { lowQuota.threshold }, set: { lowQuota.setThreshold($0) })) {
                     ForEach(LowQuotaReminderController.thresholds, id: \.self) { value in
                         Text("\(value)%").tag(value)
                     }
