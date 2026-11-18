@@ -12,8 +12,13 @@ protocol ReminderNotificationCenter: Sendable {
     func pendingIDs() async -> Set<String>
     func deliveredIDs() async -> Set<String>
     func add(_ reminder: ResetCreditReminder) async throws
+    func add(_ reminder: LowQuotaReminder) async throws
     func removePending(_ ids: [String]) async
     func removeDelivered(_ ids: [String]) async
+}
+
+extension ReminderNotificationCenter {
+    func add(_ reminder: LowQuotaReminder) async throws { throw CocoaError(.featureUnsupported) }
 }
 
 struct SystemReminderCenter: ReminderNotificationCenter {
@@ -50,6 +55,15 @@ struct SystemReminderCenter: ReminderNotificationCenter {
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, reminder.fireAt.timeIntervalSinceNow), repeats: false)
         try await center.add(UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: trigger))
+    }
+    func add(_ reminder: LowQuotaReminder) async throws {
+        guard let center else { throw CocoaError(.featureUnsupported) }
+        guard reminder.resetsAt > Date() else { throw ReminderSchedulingError.expired }
+        let content = UNMutableNotificationContent()
+        content.title = "Codex 额度即将用完"
+        content.body = reminder.body
+        content.sound = .default
+        try await center.add(UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: nil))
     }
     func removePending(_ ids: [String]) async { center?.removePendingNotificationRequests(withIdentifiers: ids) }
     func removeDelivered(_ ids: [String]) async { center?.removeDeliveredNotifications(withIdentifiers: ids) }

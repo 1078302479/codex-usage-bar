@@ -113,9 +113,27 @@ struct ResetCreditSectionView: View {
 @MainActor
 struct ResetCreditReminderSettingsView: View {
     @ObservedObject var controller: ResetCreditReminderController
+    @ObservedObject var lowQuota: LowQuotaReminderController
 
     var body: some View {
         Form {
+            Section("低额度提醒") {
+                Toggle("剩余额度达到阈值时提醒", isOn: Binding(get: { lowQuota.enabled }, set: { value in
+                    Task { await lowQuota.setEnabled(value) }
+                })).disabled(lowQuota.isUpdating)
+                Picker("提醒阈值", selection: Binding(get: { lowQuota.threshold }, set: lowQuota.setThreshold)) {
+                    ForEach(LowQuotaReminderController.thresholds, id: \.self) { value in
+                        Text("\(value)%").tag(value)
+                    }
+                }.disabled(lowQuota.isUpdating)
+                Text("当前登录账号的每个额度窗口在每次重置前最多提醒一次。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if lowQuota.permission == .denied {
+                    Button("在系统设置中允许通知") { controller.openSystemSettings() }
+                } else if lowQuota.permission == .unavailable {
+                    Text("当前运行方式不支持通知。").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Section("重置卡到期提醒") {
                 Toggle("到期前 24 小时提醒", isOn: Binding(get: { controller.enabled }, set: { value in
                     Task { await controller.setEnabled(value) }
@@ -139,6 +157,7 @@ struct ResetCreditReminderSettingsView: View {
             }
         }.formStyle(.grouped)
         .onAppear { controller.refreshPermission() }
+        .task { await lowQuota.refreshPermission() }
     }
     private var permissionLabel: String {
         switch controller.permission {

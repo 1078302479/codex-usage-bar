@@ -8,6 +8,13 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.13: low-quota alerts and account comparison
+
+- Enable low-quota alerts for the signed-in account in Settings → Notifications. The default threshold is 10%.
+- Compare remaining quota in the account picker. A shared toggle applies your percentage color rules to the picker and the quota card.
+
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.13.md)
+
 ## v0.1.12: redesigned UI and focus on the active account
 
 The native popup and Settings now use consistent modular layouts, full-email account cards, a clearer account dropdown, quota bars, reset-credit timelines and Token activity. Browsing another account does not change the desktop login; only Switch and restart does.

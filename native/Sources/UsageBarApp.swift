@@ -57,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     func applicationDidBecomeActive(_ notification: Notification) {
         state.reminders.refreshPermission()
+        Task { await state.lowQuotaReminders.refreshPermission() }
         state.panelOpened()
         if settingsWindow == nil && panelWindow == nil && !popover.isShown { showPopover() }
     }

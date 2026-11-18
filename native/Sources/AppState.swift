@@ -53,6 +53,7 @@ final class AppState: ObservableObject {
         guard force || snapshot != reminderSnapshot || valid != reminderVerified else { return }
         reminderSnapshot = snapshot; reminderVerified = valid
         reminders.update(snapshot: snapshot, verified: valid)
+        lowQuotaReminders.check()
         configureCreditCheck()
     }
     private func updateReminderData() {
@@ -60,6 +61,7 @@ final class AppState: ObservableObject {
         else { syncActiveReminders(force: true) }
     }
     let reminders: ResetCreditReminderController
+    let lowQuotaReminders: LowQuotaReminderController
     @Published var panelHeight: CGFloat = 800
     @Published var settingsTab: SettingsTab = .menuBar
     private var lastCreditDetailsDefault: Bool?
@@ -415,11 +417,20 @@ final class AppState: ObservableObject {
         self.codexHome = codexHome
         self.loginOpener = loginOpener; self.secondaryFactory = secondaryFactory
         reminders = ResetCreditReminderController(defaults: defaults, center: reminderCenter)
+        lowQuotaReminders = LowQuotaReminderController(defaults: defaults, center: reminderCenter)
         if let data = defaults.data(forKey: "preferences.v1"), let saved = try? JSONDecoder().decode(Preferences.self, from: data) { preferences = saved }
         else { preferences = Preferences() }
         if let data = defaults.data(forKey: "quota-cache.v1") { snapshot = try? JSONDecoder().decode(QuotaSnapshot.self, from: data) }
         reminders.onConfigurationChange = { [weak self] in self?.configureCreditCheck() }
         reminders.onNeedsRefresh = { [weak self] in self?.reminderAccount?.scheduleRefresh(reason: "重置卡提醒核验", delay: 0) }
+        lowQuotaReminders.activeSnapshot = { [weak self] in
+            guard let self, !self.paused, !self.dualClient.isSwitching, let account = self.reminderAccount,
+                  account.verified, !account.isSigningOut else { return nil }
+            return account.snapshot
+        }
+        lowQuotaReminders.onNeedsRefresh = { [weak self] in
+            self?.reminderAccount?.scheduleRefresh(reason: "低额度提醒核验", delay: 0)
+        }
     }
 
     var isPlusAccount: Bool {
@@ -800,6 +811,7 @@ final class AppState: ObservableObject {
         await connectionBarrier?.value
         // Already scheduled local notifications may remain when quitting normally.
         await reminders.flush()
+        await lowQuotaReminders.flush()
         connectionBarrier = nil; started = false
     }
 }

@@ -8,6 +8,7 @@ private actor TestReminderCenter: ReminderNotificationCenter {
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var permissionRequests = 0
     private(set) var added: [ResetCreditReminder] = []
+    private(set) var lowQuotaAdded: [LowQuotaReminder] = []
     private(set) var pending: [String: ResetCreditReminder] = [:]
     private var delivered: Set<String> = []
     init(_ status: ReminderPermission = .allowed) { self.status = status }
@@ -20,6 +21,10 @@ private actor TestReminderCenter: ReminderNotificationCenter {
         if holdAdd { await withCheckedContinuation { continuation = $0 } }
         if failAdd { throw CocoaError(.fileWriteUnknown) }
         pending[reminder.identifier] = reminder
+    }
+    func add(_ reminder: LowQuotaReminder) throws {
+        if failAdd { throw CocoaError(.fileWriteUnknown) }
+        lowQuotaAdded.append(reminder)
     }
     func removePending(_ ids: [String]) { for id in ids { pending.removeValue(forKey: id) } }
     func removeDelivered(_ ids: [String]) { delivered.subtract(ids) }
@@ -77,7 +82,78 @@ private actor CardFixtureClient: QuotaClient {
         await persistenceAndCancellation()
         await failureAndRace()
         await stateIntegration()
+        await lowQuotaNotifications()
         print("PASS: reset-credit decoding, eligibility, notifications, deduplication, cancellation and race regressions")
+    }
+
+    @MainActor private static func lowQuotaNotifications() async {
+        let center = TestReminderCenter(.unknown)
+        let (_, defaults, suite) = setup(center)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        func quota(_ remaining: Double, scope: String = "active", resetAfter: Double = 300,
+                   age: Double = 0) -> QuotaSnapshot {
+            let window = QuotaWindow(usedPercent: 100 - remaining, windowDurationMins: 300,
+                                     resetsAt: instant.addingTimeInterval(resetAfter).timeIntervalSince1970)
+            let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: window, secondary: nil,
+                                     planType: "free", spendControlReached: nil, rateLimitReachedType: nil)
+            return QuotaSnapshot(observedAt: instant.addingTimeInterval(-age), accountScope: scope,
+                                 accountLabel: "Fixture", planType: "free", buckets: [bucket])
+        }
+
+        var snapshot: QuotaSnapshot? = quota(12)
+        let controller = LowQuotaReminderController(defaults: defaults, center: center, clock: { instant })
+        controller.activeSnapshot = { snapshot }
+        check(!controller.enabled && controller.threshold == 10, "Low quota is opt-in with a 10% default")
+        controller.check()
+        await controller.flush()
+        let requests = await center.permissionRequests
+        check(requests == 0, "Disabled low quota never requests authorization")
+        await controller.setEnabled(true)
+        controller.check()
+        await controller.flush()
+        let aboveThreshold = await center.lowQuotaAdded
+        check(aboveThreshold.isEmpty, "Quota above threshold is silent")
+
+        snapshot = quota(9)
+        controller.check()
+        controller.check()
+        await controller.flush()
+        let first = await center.lowQuotaAdded
+        check(first.count == 1 && first[0].body.contains("9%") && first[0].body.contains("重置"),
+              "Low quota reports the amount and reset time once")
+        controller.setThreshold(15)
+        let restarted = LowQuotaReminderController(defaults: defaults, center: center, clock: { instant })
+        restarted.activeSnapshot = { snapshot }
+        check(restarted.enabled && restarted.threshold == 15, "Opt-in and threshold persist")
+        restarted.check()
+        await restarted.flush()
+        let duplicates = await center.lowQuotaAdded
+        check(duplicates == first, "Delivery is deduplicated after app restart")
+
+        snapshot = quota(8, resetAfter: 600, age: QuotaPresentation.staleAfter + 1)
+        restarted.check()
+        await restarted.flush()
+        snapshot = quota(8, resetAfter: 0)
+        restarted.check()
+        await restarted.flush()
+        let expired = await center.lowQuotaAdded
+        check(expired == first, "Stale snapshots and expired windows never notify")
+
+        snapshot = quota(8, resetAfter: 600)
+        await center.configure(fail: true)
+        restarted.check()
+        await restarted.flush()
+        await center.configure()
+        restarted.check()
+        await restarted.flush()
+        snapshot = quota(8, scope: "other", resetAfter: 600)
+        restarted.check()
+        await restarted.flush()
+        let later = await center.lowQuotaAdded
+        check(later.count == 3 && Set(later.map(\.identifier)).count == 3,
+              "New cycles and different accounts alert independently, and failed delivery can retry")
+        print("PASS: low quota opt-in, threshold, freshness, durable deduplication and new cycles")
     }
 
     static func decoding() throws {
@@ -235,17 +311,33 @@ private actor CardFixtureClient: QuotaClient {
         main.dualClient.onRestartSucceeded = { _ in main.syncActiveReminders(force: true) }
         main.setSecondAccountEnabled(true)
         main.isRefreshing = true; second.isRefreshing = true
-        let a = snapshot([credit("primary", expiry: Date().addingTimeInterval(172800))], scope: "A", at: Date())
-        let b = snapshot([credit("secondary", expiry: Date().addingTimeInterval(172800))], scope: "B", at: Date())
+        let now = Date()
+        let window = QuotaWindow(usedPercent: 96, windowDurationMins: 300, resetsAt: now.timeIntervalSince1970 + 300)
+        let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: window, secondary: nil, planType: "plus",
+                                 spendControlReached: nil, rateLimitReachedType: nil)
+        let a = QuotaSnapshot(observedAt: now, accountScope: "A", accountLabel: "A", planType: "plus", buckets: [bucket],
+                              resetCredits: .init(availableCount: 1, credits: [credit("primary", expiry: now.addingTimeInterval(172800))]))
+        let b = QuotaSnapshot(observedAt: now, accountScope: "B", accountLabel: "B", planType: "plus", buckets: [bucket],
+                              resetCredits: .init(availableCount: 1, credits: [credit("secondary", expiry: now.addingTimeInterval(172800))]))
         main.snapshot = a; main.verified = true
         second.snapshot = b; second.verified = true
         main.dualClient.acceptDetectedAccount(false)
         await main.reminders.setEnabled(true)
+        await main.lowQuotaReminders.setEnabled(true)
+        main.selectedAccountID = "secondary"
         main.syncActiveReminders(force: true); await main.reminders.flush()
+        await main.lowQuotaReminders.flush()
+        let aAlerts = await center.lowQuotaAdded
+        check(aAlerts == LowQuotaReminder.plan(snapshot: a, threshold: 10, now: now),
+              "Selecting backup B keeps low-quota alerts on active A")
         let aIDs = await center.pendingIDs()
         check(aIDs.count == 1 && main.reminderAccount === main, "A primary schedules only A")
         main.dualClient.acceptDetectedAccount(true)
         main.syncActiveReminders(force: true); await main.reminders.flush()
+        await main.lowQuotaReminders.flush()
+        let bAlerts = await center.lowQuotaAdded
+        check(bAlerts == aAlerts + LowQuotaReminder.plan(snapshot: b, threshold: 10, now: now),
+              "Active-account change routes low-quota alerts to B")
         let bIDs = await center.pendingIDs()
         check(bIDs.count == 1 && bIDs.isDisjoint(with: aIDs) && main.reminderAccount === second, "B primary replaces A reminders with B")
         main.showingSecondAccountDetails = false

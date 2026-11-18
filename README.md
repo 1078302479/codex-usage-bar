@@ -9,6 +9,13 @@
 
 Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.13：低额度提醒与账号额度对比
+
+- 在「设置 → 通知提醒」开启当前登录账号的低额度提醒，默认阈值为 10%。
+- 「切换账号」直接展示各账号剩余额度。一个开关可以让账号列表和「当前额度」卡片跟随百分比区间颜色。
+
+[正式版下载](https://github.com/1078302479/codex-usage-bar/releases/latest) · [完整版本说明](docs/releases/v0.1.13.md)
+
 ## v0.1.12 正式版：新版界面与当前账号聚焦
 
 主弹窗和设置页面采用统一的模块布局，展示完整邮箱、账号下拉列表、额度概览、重置卡及 Token 活动。账号卡片明确区分当前登录与正在查看；只有“切换并重启”才会更改客户端登录。

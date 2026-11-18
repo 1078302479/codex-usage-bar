@@ -19,4 +19,13 @@ enum PanelPalette {
     static var longRing: Color { adaptive(NSColor(srgbRed: 0.71, green: 0.64, blue: 0.89, alpha: 1), light: NSColor(srgbRed: 0.60, green: 0.54, blue: 0.79, alpha: 1)) }
     static var surface: Color { adaptive(NSColor(srgbRed: 0.19, green: 0.195, blue: 0.22, alpha: 1), light: NSColor(srgbRed: 0.965, green: 0.965, blue: 0.97, alpha: 1)) }
     static var border: Color { ringTrack }
+    static func remainingQuotaText(_ remaining: Double) -> Color {
+        if remaining <= 20 {
+            return adaptive(NSColor(srgbRed: 1, green: 0.56, blue: 0.60, alpha: 1),
+                            light: NSColor(srgbRed: 0.74, green: 0.15, blue: 0.23, alpha: 1))
+        }
+        if remaining <= 50 { return warning }
+        return adaptive(NSColor(srgbRed: 0.45, green: 0.85, blue: 0.63, alpha: 1),
+                        light: NSColor(srgbRed: 0.06, green: 0.44, blue: 0.29, alpha: 1))
+    }
 }

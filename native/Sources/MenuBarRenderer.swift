@@ -4,7 +4,10 @@ import AppKit
 enum MenuBarRenderer {
     static func colorHex(window: QuotaWindow?, rules: [PercentageColorRule]?, verified: Bool, now: Date) -> String? {
         guard verified, let window, !window.isResetPending(at: now), let value = window.remaining else { return nil }
-        return rules?.first(where: { $0.matches(value) })?.hex
+        return colorHex(remaining: value, rules: rules)
+    }
+    static func colorHex(remaining: Double, rules: [PercentageColorRule]?) -> String? {
+        rules?.first(where: { $0.matches(remaining) })?.hex
     }
     static func color(_ hex: String) -> NSColor {
         let rgb = UInt32(hex, radix: 16) ?? 0xFFFFFF

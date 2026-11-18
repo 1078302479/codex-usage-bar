@@ -8,7 +8,7 @@ extension SettingsTab {
         case .menuBar: return "菜单栏显示"
         case .appearance: return "外观与通用"
         case .connection: return "连接与更新"
-        case .reminders: return "重置卡提醒"
+        case .reminders: return "通知提醒"
         case .about: return "关于"
         }
     }
@@ -28,7 +28,7 @@ extension SettingsTab {
         case .menuBar: return "在菜单栏留下你最需要的信息。"
         case .appearance: return "让界面与你的工作环境保持一致。"
         case .connection: return "管理客户端连接、额度核验与应用版本。"
-        case .reminders: return "提前 24 小时提醒，跟随客户端当前登录账号。"
+        case .reminders: return "跟随客户端当前登录账号。"
         case .about: return "一个专注于 Codex 额度的菜单栏工具。"
         }
     }
@@ -92,7 +92,7 @@ struct UsageSettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(state.reminderAccount.map { "当前登录账号：" + ($0.snapshot?.accountLabel ?? "等待核验") } ?? "等待确认当前登录账号")
                     .font(.caption).foregroundStyle(PanelPalette.secondary).padding(.horizontal, 30).padding(.top, 12)
-                ResetCreditReminderSettingsView(controller: state.reminders).disabled(preview)
+                ResetCreditReminderSettingsView(controller: state.reminders, lowQuota: state.lowQuotaReminders).disabled(preview)
             }
         case .about: aboutPage
         }
@@ -175,6 +175,9 @@ struct UsageSettingsView: View {
                     }.disabled(!state.preferences.useSeparator)
                     Text(state.preferences.useSeparator ? "用所选分隔符分开各项。" : "各项仅使用空格排开。")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("百分比颜色联动") {
+                    Toggle("额度卡片和账号列表跟随百分比颜色", isOn: bind(\.followsQuotaColors))
                 }
                 MenuColorRulesView(title: "5 小时百分比颜色", rules: Binding(
                     get: { state.preferences.primaryColorRules ?? [] }, set: { state.preferences.primaryColorRules = $0 }))

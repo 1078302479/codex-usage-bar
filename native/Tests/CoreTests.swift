@@ -12,6 +12,19 @@ import Foundation
         let long = QuotaWindow(usedPercent: 3, windowDurationMins: 10080, resetsAt: now.addingTimeInterval(86400).timeIntervalSince1970)
         let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: short, secondary: long, planType: "plus", spendControlReached: false, rateLimitReachedType: nil)
         let snapshot = QuotaSnapshot(observedAt: now, accountScope: "account-a", accountLabel: "te***@example.com", planType: "plus", buckets: [bucket])
+        check(QuotaPresentation.accountQuota(snapshot: snapshot, verified: true, now: now).summary == "5h 84% · 7d 97%",
+              "Account comparison shows both remaining quotas")
+        check(QuotaPresentation.accountQuota(snapshot: snapshot, verified: false, now: now).summary == "5h 84% · 7d 97% · 上次核验",
+              "Account comparison labels unverified cache")
+        check(QuotaPresentation.accountQuota(snapshot: snapshot, verified: true, now: now.addingTimeInterval(3600)).summary ==
+                "5h 待核验 · 7d 97% · 上次核验", "Account comparison distinguishes elapsed windows from stale values")
+        let freeBucket = QuotaBucket(limitId: "codex", limitName: nil, primary: nil, secondary: long, planType: "free",
+                                     spendControlReached: nil, rateLimitReachedType: nil)
+        let free = QuotaSnapshot(observedAt: now, accountScope: "free", accountLabel: "Free", planType: nil, buckets: [freeBucket])
+        check(QuotaPresentation.accountQuota(snapshot: free, verified: true, now: now).summary == "7d 97%",
+              "Free accounts show the actual window, including secondary-only responses")
+        check(QuotaPresentation.accountQuota(snapshot: nil, verified: false, now: now).summary == "额度待核验",
+              "Missing quota is displayed as pending")
         let legacyData = try JSONEncoder().encode(snapshot)
         let legacySnapshot = try JSONDecoder().decode(QuotaSnapshot.self, from: legacyData)
         check(legacySnapshot.accountEmail == nil && legacySnapshot.displayEmail == snapshot.accountLabel, "cached masked labels remain readable without email")
@@ -30,6 +43,11 @@ import Foundation
         check(emptyActivity.dailyUsageBuckets == nil, "nullable official activity supported")
         check(TokenActivity.heatmapDays(now: now).count == 182, "heatmap has 26 complete weeks")
         var p = Preferences()
+        check(p.followsQuotaColors, "Quota card color linking defaults to enabled")
+        var unlinked = p
+        unlinked.followsQuotaColors = false
+        let restoredUnlinked = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(unlinked))
+        check(!restoredUnlinked.followsQuotaColors, "Quota card color linking can be disabled across restarts")
         check(p.refreshMode == .followClient && p.refreshMode.interval == nil, "default follows client, not fixed polling")
         check(QuotaPresentation.menuTitle(snapshot: snapshot, preferences: p, verified: true, now: now) == "5h 84% | 7d 97%", "both independent windows with separator")
         p.isStacked = true

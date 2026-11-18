@@ -193,12 +193,12 @@ struct OrbitAccountMenu: View {
             ScrollView {
                 VStack(spacing: 3) {
                     ForEach(owner.homeAccounts, id: \.id) { entry in
-                        OrbitAccountOption(account: entry.state, role: owner.accountRole(entry.id),
+                        OrbitAccountOption(account: entry.state, preferences: owner.preferences, role: owner.accountRole(entry.id),
                             active: controller.detected && entry.id == controller.activeProfileID,
                             selected: selected == entry.id) { owner.selectedAccountID = entry.id }
                     }
                 }.padding(7)
-            }.frame(height: min(300, CGFloat(owner.homeAccounts.count) * 59 + 14))
+            }.frame(height: min(305, CGFloat(owner.homeAccounts.count) * 88 + 14))
             if selected != controller.activeProfileID {
                 Divider().padding(.horizontal, 16)
                 HStack {
@@ -235,11 +235,15 @@ struct OrbitAccountMenu: View {
 @MainActor
 private struct OrbitAccountOption: View {
     @ObservedObject var account: AppState
+    let preferences: Preferences
     let role: String
     let active: Bool
     let selected: Bool
     let choose: () -> Void
+
     var body: some View {
+        let quota = QuotaPresentation.accountQuota(snapshot: account.snapshot,
+                                                  verified: account.verified && !account.isSigningOut, now: account.now)
         Button(action: choose) {
             VStack(alignment: .leading, spacing: 7) {
                 Text(account.snapshot?.displayEmail ?? "账号待核验")
@@ -257,6 +261,34 @@ private struct OrbitAccountOption: View {
                         Image(systemName: "chevron.right")
                     }
                 }.font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 15) {
+                    if quota.windows.isEmpty {
+                        Text("额度待核验").font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
+                    }
+                    ForEach(quota.windows) { window in
+                        HStack(alignment: .firstTextBaseline, spacing: 5) {
+                            Text(window.label).font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
+                            if let remaining = window.remaining {
+                                let rules = window.id == 0 ? preferences.primaryColorRules : preferences.secondaryColorRules
+                                let color = MenuBarRenderer.colorHex(remaining: remaining, rules: rules)
+                                    .map { Color(nsColor: MenuBarRenderer.color($0)) }
+                                let quotaColor = preferences.followsQuotaColors
+                                    ? color ?? PanelPalette.primary : PanelPalette.remainingQuotaText(remaining)
+                                Text(QuotaPresentation.percent(remaining))
+                                    .font(.system(size: 17, weight: .semibold)).monospacedDigit()
+                                    .foregroundStyle(quota.cached ? PanelPalette.secondary : quotaColor)
+                            } else {
+                                Text("待核验").font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
+                            }
+                        }
+                        .frame(minWidth: 83, alignment: .leading)
+                    }
+                    Spacer(minLength: 0)
+                    if quota.cached {
+                        Text("上次核验").font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
+                    }
+                }
+                .accessibilityElement(children: .ignore).accessibilityLabel("剩余额度，" + quota.summary)
             }.padding(11).frame(maxWidth: .infinity, alignment: .leading)
                 .background(selected ? PanelPalette.surface : PanelPalette.background,
                             in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
@@ -286,9 +318,16 @@ private struct OrbitAccountInstruments: View {
                 }.font(.system(size: 11))
             }
             HStack(alignment: .top, spacing: 22) {
-                OrbitCompactGauge(state: account, window: account.bucket?.primary ?? (account.isFreeAccount ? account.bucket?.secondary : nil), fallback: account.isFreeAccount ? "周期额度" : "短周期额度", color: PanelPalette.shortRing)
+                let usesSecondary = account.isFreeAccount && account.bucket?.primary == nil
+                let primaryRules = owner.preferences.followsQuotaColors ? owner.preferences.primaryColorRules : nil
+                let secondaryRules = owner.preferences.followsQuotaColors ? owner.preferences.secondaryColorRules : nil
+                OrbitCompactGauge(state: account, window: usesSecondary ? account.bucket?.secondary : account.bucket?.primary,
+                                  fallback: account.isFreeAccount ? "周期额度" : "短周期额度",
+                                  color: usesSecondary ? PanelPalette.longRing : PanelPalette.shortRing,
+                                  rules: usesSecondary ? secondaryRules : primaryRules)
                 if !account.isFreeAccount {
-                    OrbitCompactGauge(state: account, window: account.bucket?.secondary, fallback: "长期额度", color: PanelPalette.longRing)
+                    OrbitCompactGauge(state: account, window: account.bucket?.secondary, fallback: "长期额度",
+                                      color: PanelPalette.longRing, rules: secondaryRules)
                 }
             }
             if account.updateStatus.isWarning {
@@ -309,10 +348,17 @@ private struct OrbitCompactGauge: View {
     let window: QuotaWindow?
     let fallback: String
     let color: Color
+    let rules: [PercentageColorRule]?
     private var amount: String { QuotaPresentation.value(window, verified: state.verified, now: state.now) }
     private var remaining: Double? { amount == "--" ? nil : window?.remaining }
-    private var accent: Color { (remaining ?? 100) <= 20 ? PanelPalette.warning : color }
+    private var configuredColor: Color? {
+        MenuBarRenderer.colorHex(window: window, rules: rules, verified: state.verified && !state.isStale && !state.isSigningOut, now: state.now)
+            .map { Color(nsColor: MenuBarRenderer.color($0)) }
+    }
     var body: some View {
+        let customColor = configuredColor
+        let low = (remaining ?? 100) <= 20
+        let accent = customColor ?? (low ? PanelPalette.warning : color)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Circle().fill(accent).frame(width: 7, height: 7)
@@ -321,7 +367,7 @@ private struct OrbitCompactGauge: View {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(amount.replacingOccurrences(of: "%", with: "")).font(.system(size: 34, weight: .medium)).tracking(-1).monospacedDigit()
                 if amount.hasSuffix("%") { Text("%").font(.system(size: 15)) }
-            }.foregroundStyle((remaining ?? 100) <= 20 ? PanelPalette.warning : PanelPalette.primary)
+            }.foregroundStyle(customColor ?? (low ? PanelPalette.warning : PanelPalette.primary))
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(PanelPalette.ringTrack)

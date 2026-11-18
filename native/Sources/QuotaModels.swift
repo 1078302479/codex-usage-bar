@@ -143,6 +143,11 @@ struct Preferences: Codable, Sendable, Equatable {
     var panelFitsScreen: Bool? = nil
     var primaryColorRules: [PercentageColorRule]? = nil
     var secondaryColorRules: [PercentageColorRule]? = nil
+    var quotaCardColorLink: Bool? = nil
+    var followsQuotaColors: Bool {
+        get { quotaCardColorLink ?? true }
+        set { quotaCardColorLink = newValue }
+    }
     // Optional for backwards-compatible decoding of existing preferences.v1.
     var stackedDisplay: Bool? = nil
     var isStacked: Bool {
@@ -197,6 +202,37 @@ enum QuotaPresentation {
     }
     static func selectedBucket(_ snapshot: QuotaSnapshot?, preferences: Preferences) -> QuotaBucket? {
         snapshot?.buckets.first { $0.id == preferences.selectedBucket } ?? snapshot?.buckets.first { $0.id == "codex" } ?? snapshot?.buckets.first
+    }
+    struct AccountQuota {
+        let windows: [AccountQuotaWindow]
+        let cached: Bool
+
+        var summary: String {
+            guard !windows.isEmpty else { return "额度待核验" }
+            let parts = windows.map { "\($0.label) \($0.remaining.map(QuotaPresentation.percent) ?? "待核验")" }
+            return (parts + (cached ? ["上次核验"] : [])).joined(separator: " · ")
+        }
+    }
+
+    struct AccountQuotaWindow: Identifiable {
+        let id: Int
+        let label: String
+        let remaining: Double?
+    }
+
+    static func accountQuota(snapshot: QuotaSnapshot?, verified: Bool, now: Date) -> AccountQuota {
+        guard let snapshot, let bucket = selectedBucket(snapshot, preferences: Preferences()),
+              bucket.primary != nil || bucket.secondary != nil else { return AccountQuota(windows: [], cached: false) }
+        let isFree = (snapshot.planType ?? bucket.planType)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "free"
+        let windows = [(bucket.primary, "短周期"), (bucket.secondary, "长期")]
+        let columns = windows.enumerated().compactMap { index, pair -> AccountQuotaWindow? in
+            let (window, fallback) = pair
+            if window == nil && isFree { return nil }
+            let remaining = window?.isResetPending(at: now) == true ? nil : window?.remaining
+            return AccountQuotaWindow(id: index, label: window?.shortLabel ?? fallback, remaining: remaining)
+        }
+        let cached = columns.contains { $0.remaining != nil } && (!verified || now.timeIntervalSince(snapshot.observedAt) > staleAfter)
+        return AccountQuota(windows: columns, cached: cached)
     }
     static func stackedLines(snapshot: QuotaSnapshot?, preferences p: Preferences, verified: Bool, now: Date) -> [String] {
         // Reuse the exact accuracy/formatting rules of the normal menu title.
