@@ -109,16 +109,50 @@ enum AppUpdateInstaller {
         try run("/usr/bin/lipo", ["-verify_arch", architecture, executable.path])
         return app
     }
-    // Arguments, rather than interpolated shell strings, preserve spaces and metacharacters.
+    // Both entry points run under the same lock so pruning cannot interrupt a rollback.
     static let helperScript = #"""
 #!/bin/sh
 set -eu
+prune_backups() {
+  directory="$1"
+  pinned="${2:-}"
+  keep="$pinned"
+  retention_seconds=259200
+  cutoff=$(( $(/bin/date +%s) - retention_seconds ))
+  newest="$cutoff"
+  set --
+  for candidate in "$directory"/.CodexUsageBar-backup-????????-????-????-????-????????????.app; do
+    [ -d "$candidate" ] && [ ! -L "$candidate" ] || continue
+    identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$candidate/Contents/Info.plist" 2>/dev/null) || continue
+    [ "$identifier" = com.guoyuming.UsageBar ] || continue
+    modified=$(/usr/bin/stat -f %m "$candidate") || return 1
+    set -- "$@" "$candidate"
+    if [ -z "$pinned" ] && [ "$modified" -gt "$newest" ]; then
+      keep="$candidate"
+      newest="$modified"
+    fi
+  done
+  failed=0
+  for candidate do
+    [ "$candidate" = "$keep" ] || /bin/rm -rf "$candidate" || failed=1
+  done
+  [ "$failed" -eq 0 ] || return 1
+  if [ -n "$keep" ]; then
+    modified=$(/usr/bin/stat -f %m "$keep") || return 1
+    printf '%s\n' "$((modified + retention_seconds))"
+  fi
+}
+if [ "$1" = --prune-backups ]; then
+  prune_backups "$2"
+  exit
+fi
 old_pid="$1"
 target="$2"
 staged="$3"
 backup="$4"
 log="$5"
 result="$6"
+original_inode="$7"
 exec >>"$log" 2>&1
 fail() { printf '%s\n' "$1" > "$result"; exit 1; }
 count=0
@@ -130,38 +164,68 @@ while kill -0 "$old_pid" 2>/dev/null; do
   fi
   sleep 0.2
 done
-/usr/bin/codesign --verify --deep --strict "$staged" || fail '安装文件签名验证失败，原版本保留。'
-if ! mv "$target" "$backup"; then fail '无法替换应用，原版本保留，请检查安装目录权限。'; fi
-if ! mv "$staged" "$target"; then
-  mv "$backup" "$target" || true
+if [ "$(/usr/bin/stat -f %i "$target")" != "$original_inode" ]; then
+  rm -rf "$staged"
+  fail '应用已被替换，本次更新已取消。'
+fi
+if ! /usr/bin/codesign --verify --deep --strict "$staged"; then
+  rm -rf "$staged"
+  fail '安装文件签名验证失败，原版本保留。'
+fi
+if ! mv "$target" "$backup"; then
+  rm -rf "$staged"
+  fail '无法替换应用，原版本保留，请检查安装目录权限。'
+fi
+if ! /usr/bin/touch "$backup" || ! mv "$staged" "$target"; then
+  if mv "$backup" "$target"; then rm -rf "$staged"; fi
   /usr/bin/open "$target" || true
   fail '安装失败，已尝试恢复旧版本。'
 fi
 if ! /usr/bin/open "$target"; then
-  mv "$target" "$staged" || true
-  mv "$backup" "$target" || true
+  if mv "$target" "$staged" && mv "$backup" "$target"; then rm -rf "$staged"; fi
   printf '%s\n' '重启失败，已尝试恢复旧版本。' > "$result"
   /usr/bin/open "$target" || true
   exit 1
 fi
-printf '%s\n' '更新已安装，旧版本备份已保留。' > "$result"
+if prune_backups "${target%/*}" "$backup" >/dev/null; then
+  printf '%s\n' '更新已安装，上一版本备份保留 3 天。' > "$result"
+else
+  printf '%s\n' '更新已安装，部分旧备份暂未清理。' > "$result"
+fi
 """#
+    private static func lockedShellArguments(in directory: URL) -> [String] {
+        ["-k", directory.appendingPathComponent(".CodexUsageBar-update.lock").path, "/bin/sh"]
+    }
+    static func pruneBackups(for target: URL) throws -> Date? {
+        let directory = target.deletingLastPathComponent()
+        guard !target.lastPathComponent.hasPrefix(".CodexUsageBar-backup-"),
+              Bundle(url: target)?.bundleIdentifier == bundleID,
+              FileManager.default.isWritableFile(atPath: directory.path) else { return nil }
+        let output = try run("/usr/bin/lockf", lockedShellArguments(in: directory) +
+            ["-c", helperScript, "CodexUsageBar", "--prune-backups", directory.path])
+        return TimeInterval(output.trimmingCharacters(in: .whitespacesAndNewlines)).map(Date.init(timeIntervalSince1970:))
+    }
     static func prepareInstall(app: URL, target: URL, workDirectory: URL, pid: Int32) throws -> Process {
         let fm = FileManager.default
-        guard target.pathExtension == "app", fm.isWritableFile(atPath: target.deletingLastPathComponent().path),
-              Bundle(url: target)?.bundleIdentifier == bundleID else { throw UpdateFailure.invalid("应用目录不可写，请将应用移至可写的固定目录后重试。") }
+        let directory = target.deletingLastPathComponent()
+        guard target.pathExtension == "app", fm.isWritableFile(atPath: directory.path),
+              Bundle(url: target)?.bundleIdentifier == bundleID,
+              let inode = try fm.attributesOfItem(atPath: target.path)[.systemFileNumber] as? NSNumber else {
+            throw UpdateFailure.invalid("应用目录不可写，请将应用移至可写的固定目录后重试。")
+        }
         let token = UUID().uuidString
-        let staged = target.deletingLastPathComponent().appendingPathComponent(".CodexUsageBar-update-" + token + ".app")
-        let backup = target.deletingLastPathComponent().appendingPathComponent(".CodexUsageBar-backup-" + token + ".app")
-        do { try run("/usr/bin/ditto", [app.path, staged.path]) }
-        catch { try? fm.removeItem(at: staged); throw error }
+        let staged = directory.appendingPathComponent(".CodexUsageBar-update-" + token + ".app")
+        let backup = directory.appendingPathComponent(".CodexUsageBar-backup-" + token + ".app")
         let helper = workDirectory.appendingPathComponent("install.sh")
         try helperScript.write(to: helper, atomically: true, encoding: .utf8)
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
         let support = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/CodexUsageBar/updates")
         try fm.createDirectory(at: support, withIntermediateDirectories: true)
-        let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [helper.path, String(pid), target.path, staged.path, backup.path, support.appendingPathComponent("install.log").path, support.appendingPathComponent("result.txt").path]
+        do { try run("/usr/bin/ditto", [app.path, staged.path]) }
+        catch { try? fm.removeItem(at: staged); throw error }
+        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/lockf")
+        process.arguments = lockedShellArguments(in: directory) +
+            [helper.path, String(pid), target.path, staged.path, backup.path, support.appendingPathComponent("install.log").path, support.appendingPathComponent("result.txt").path, inode.stringValue]
         process.standardInput = FileHandle.nullDevice; process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
         return process
     }

@@ -56,13 +56,15 @@ final class AppUpdateController: ObservableObject {
     let currentVersion: String
     private let defaults: UserDefaults
     private var timer: Timer?
+    private var backupExpiryTimer: Timer?
+    private var backupCleanupTask: Task<Void, Never>?
     private var task: Task<Void, Never>?
     private var downloadTask: Task<Void, Never>?
     private var preparedApp: URL?
     private var workDirectory: URL?
     private var installerProcess: Process?
     private var window: NSWindow?
-    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.12", defaults: UserDefaults = .standard) {
+    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.14", defaults: UserDefaults = .standard) {
         currentVersion = version; self.defaults = defaults
         lastChecked = defaults.object(forKey: "updates.last-success.v1") as? Date
         acceptsPrereleases = defaults.bool(forKey: "updates.accepts-prereleases.v1")
@@ -83,8 +85,27 @@ final class AppUpdateController: ObservableObject {
     func start() {
         guard timer == nil else { return }
         checkIfDue()
+        maintainBackups()
         timer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkIfDue() }
+        }
+    }
+    private func maintainBackups() {
+        backupCleanupTask = Task { [weak self] in
+            let cleanup = Task.detached(priority: .utility) {
+                try AppUpdateInstaller.pruneBackups(for: Bundle.main.bundleURL)
+            }
+            let expiry: Date?
+            do { expiry = try await cleanup.value }
+            catch { expiry = Date().addingTimeInterval(60) }
+            guard let self, !Task.isCancelled else { return }
+            backupCleanupTask = nil
+            guard let expiry else { return }
+            let nextCheck = Timer(timeInterval: max(1, expiry.timeIntervalSinceNow), repeats: false) { [weak self] _ in
+                Task { @MainActor in self?.maintainBackups() }
+            }
+            backupExpiryTimer = nextCheck
+            RunLoop.main.add(nextCheck, forMode: .common)
         }
     }
     func checkIfDue(now: Date = Date()) {
@@ -92,6 +113,8 @@ final class AppUpdateController: ObservableObject {
     }
     func stop() {
         timer?.invalidate(); timer = nil; task?.cancel(); task = nil
+        backupExpiryTimer?.invalidate(); backupExpiryTimer = nil
+        backupCleanupTask?.cancel(); backupCleanupTask = nil
         downloadTask?.cancel(); downloadTask = nil; checking = false
     }
     func check() {
@@ -199,7 +222,7 @@ final class AppUpdateController: ObservableObject {
         guard readyToInstall, !busy, let app = preparedApp, let directory = workDirectory else { return }
         let alert = NSAlert()
         alert.messageText = "安装更新并重新启动？"
-        alert.informativeText = "将退出 CodexUsageBar 并替换应用，保留账号、本地工作空间与设置。请先保存任务。旧应用将保留为备份。"
+        alert.informativeText = "将退出 CodexUsageBar 并替换应用，保留账号、本地工作空间与设置。请先保存任务。应用只保留一份上一版本的备份，保留期为 3 天。"
         alert.addButton(withTitle: "安装并重启")
         alert.addButton(withTitle: "取消")
         guard alert.runModal() == .alertFirstButtonReturn else { return }

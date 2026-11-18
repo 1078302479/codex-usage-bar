@@ -8,6 +8,12 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.14 · Automatic update backup cleanup
+
+After a successful in-app update, CodexUsageBar keeps one rollback copy of the previous version for 72 hours. If the app is closed when the backup expires, it removes the copy the next time it opens.
+
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.14.md)
+
 ## v0.1.13: low-quota alerts and account comparison
 
 - Enable low-quota alerts for the signed-in account in Settings → Notifications. The default threshold is 10%.

@@ -9,6 +9,12 @@
 
 Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.14 · 自动更新备份清理
+
+应用内更新成功后只保留一份用于回滚的上一版本，满 72 小时后清理。若到期时应用已退出，下次启动时清理。
+
+[正式版下载](https://github.com/1078302479/codex-usage-bar/releases/latest) · [完整版本说明](docs/releases/v0.1.14.md)
+
 ## v0.1.13：低额度提醒与账号额度对比
 
 - 在「设置 → 通知提醒」开启当前登录账号的低额度提醒，默认阈值为 10%。

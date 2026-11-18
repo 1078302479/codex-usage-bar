@@ -24,7 +24,7 @@ import Foundation
   do { try AppUpdateInstaller.validateArchiveAttributes("-rw-r--r-- 2.0 unx 999999999 bx 12 defN 26-Nov-17 12:00 CodexUsageBar.app/test"); fatalError("Oversize accepted") } catch {}
   try updatePipelineChecks()
   try installerRollbackChecks()
-  print("PASS: version selection, release channels, assets, checksums, archive paths, install and rollback")
+  print("PASS: version selection, release channels, assets, checksums, archive paths, install, rollback, and backup retention")
  }
  @MainActor static func updatePipelineChecks() throws {
   let base = "https://github.com/1078302479/codex-usage-bar/releases/"
@@ -76,23 +76,49 @@ import Foundation
   defer { try? fm.removeItem(at: root) }
   for launchSuccess in [true, false] {
    let folder = root.appendingPathComponent(launchSuccess ? "success" : "rollback")
-   let target = folder.appendingPathComponent("CodexUsageBar.app"), staged = folder.appendingPathComponent("new.app"), backup = folder.appendingPathComponent("old.app")
-   for dir in [target, staged] { try fm.createDirectory(at: dir, withIntermediateDirectories: true) }
+   let target = folder.appendingPathComponent("CodexUsageBar.app"), staged = folder.appendingPathComponent("new.app")
+   let backup = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000003.app")
+   let previous = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000002.app")
+   let older = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000001.app")
+   let unrelated = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000004.app")
+   for app in [target, staged, previous, older, unrelated] {
+    let contents = app.appendingPathComponent("Contents")
+    try fm.createDirectory(at: contents, withIntermediateDirectories: true)
+    let identifier = app == unrelated ? "com.example.OtherApp" : AppUpdateInstaller.bundleID
+    let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier], format: .xml, options: 0)
+    try plist.write(to: contents.appendingPathComponent("Info.plist"))
+   }
+   try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3600)], ofItemAtPath: older.path)
    try Data("old".utf8).write(to: target.appendingPathComponent("version"))
    try Data("new".utf8).write(to: staged.appendingPathComponent("version"))
    let script = folder.appendingPathComponent("install.sh")
    let source = AppUpdateInstaller.helperScript.replacingOccurrences(of: "/usr/bin/codesign --verify --deep --strict", with: "/usr/bin/true").replacingOccurrences(of: "/usr/bin/open", with: launchSuccess ? "/usr/bin/true" : "/usr/bin/false")
    try source.write(to: script, atomically: true, encoding: .utf8)
    let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/sh")
-   process.arguments = [script.path, "99999999", target.path, staged.path, backup.path, folder.appendingPathComponent("log").path, folder.appendingPathComponent("result").path]
+   let inode = try fm.attributesOfItem(atPath: target.path)[.systemFileNumber] as! NSNumber
+   process.arguments = [script.path, "99999999", target.path, staged.path, backup.path, folder.appendingPathComponent("log").path, folder.appendingPathComponent("result").path, inode.stringValue]
    try process.run(); process.waitUntilExit()
    precondition(process.terminationStatus == (launchSuccess ? 0 : 1))
    let data = try Data(contentsOf: target.appendingPathComponent("version"))
    precondition(data == Data((launchSuccess ? "new" : "old").utf8))
+   precondition(!fm.fileExists(atPath: staged.path))
    if launchSuccess {
     let old = try Data(contentsOf: backup.appendingPathComponent("version"))
     precondition(old == Data("old".utf8))
+    precondition(!fm.fileExists(atPath: previous.path) && !fm.fileExists(atPath: older.path))
+   } else {
+    precondition(!fm.fileExists(atPath: backup.path))
+    precondition(fm.fileExists(atPath: previous.path) && fm.fileExists(atPath: older.path))
    }
+   let retained = launchSuccess ? backup : previous
+   let expiry = try AppUpdateInstaller.pruneBackups(for: target)
+   let modified = try fm.attributesOfItem(atPath: retained.path)[.modificationDate] as! Date
+   precondition(abs(expiry!.timeIntervalSince(modified) - 259200) < 1)
+   precondition(!fm.fileExists(atPath: older.path))
+   try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-259200)], ofItemAtPath: retained.path)
+   let nextExpiry = try AppUpdateInstaller.pruneBackups(for: target)
+   precondition(nextExpiry == nil && !fm.fileExists(atPath: retained.path))
+   precondition(fm.fileExists(atPath: unrelated.path))
   }
  }
 
