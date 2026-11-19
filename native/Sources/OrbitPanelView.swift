@@ -179,9 +179,7 @@ struct OrbitAccountMenu: View {
     var openSettings: (() -> Void)? = nil
     private var selected: String { owner.accountEntries.first(where: { $0.state === owner.displayedAccount })?.id ?? selectedID }
     private var canSwitch: Bool {
-        controller.detected && selected != controller.activeProfileID && owner.displayedAccount.verified
-            && !owner.displayedAccount.isSigningIn && !owner.displayedAccount.isSigningOut
-            && !controller.isSwitching && owner.deletingAccountID == nil
+        owner.canSwitchAccount(selected)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

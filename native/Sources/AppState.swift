@@ -11,11 +11,12 @@ final class AppState: ObservableObject {
     lazy var dualClient: DualClientController = {
         let controller = DualClientController(defaults: defaults)
         controller.profiles = { [weak self] in
-            self?.accountEntries.map { ($0.id, $0.state.codexHome, $0.state.verified && !$0.state.isSigningOut ? $0.state.snapshot?.accountScope : nil) } ?? []
+            self?.accountEntries.map { ($0.id, $0.state.codexHome, $0.state.verified && !$0.state.isSigningIn && !$0.state.isSigningOut ? $0.state.snapshot?.accountScope : nil) } ?? []
         }
         controller.onActiveProfile = { [weak self] id in
             self?.selectedAccountID = id
             self?.syncActiveReminders(force: true)
+            self?.removeVerifiedDuplicateLogins()
         }
         controller.cliPath = { [weak self] in self?.preferences.cliPath ?? "" }
         controller.accountScopes = { [weak self] in
@@ -23,7 +24,10 @@ final class AppState: ObservableObject {
             return (self.verified ? self.snapshot?.accountScope : nil,
                     self.secondAccount?.verified == true ? self.secondAccount?.snapshot?.accountScope : nil)
         }
-        controller.onAccountUncertain = { [weak self] in self?.syncActiveReminders(force: true) }
+        controller.onAccountUncertain = { [weak self] in
+            self?.syncActiveReminders(force: true)
+            self?.objectWillChange.send()
+        }
         controller.onRestartSucceeded = { [weak self] secondary in
             guard let self else { return }
             self.showingSecondAccountDetails = secondary && self.secondAccount != nil
@@ -35,6 +39,8 @@ final class AppState: ObservableObject {
     private var reminderSnapshot: QuotaSnapshot?
     private var reminderVerified = false
     var onReminderDataChange: (() -> Void)?
+    private var isDuplicateScope: ((String) -> Bool)?
+    private var canDiscardDuplicateLogin: (() -> Bool)?
     var reminderAccount: AppState? {
         if secondAccount == nil && additionalAccounts.isEmpty { return dualClient.activeSecondary ? nil : self }
         if let id = dualClient.activeProfileID {
@@ -63,6 +69,47 @@ final class AppState: ObservableObject {
     private func recheckDesktopAfterQuotaVerification() {
         guard started, !dualClient.detected else { return }
         dualClient.detectRunningAccount()
+    }
+    private func configureDuplicateLoginChecks(for account: AppState, id: String) {
+        account.isDuplicateScope = { [weak self] scope in
+            guard let self, !self.dualClient.detected || self.dualClient.activeProfileID != id else { return false }
+            return self.dualClient.confirmedScope == scope || self.accountEntries.contains {
+                $0.id != id && $0.state.verified && !$0.state.isSigningOut && $0.state.snapshot?.accountScope == scope
+            }
+        }
+        account.canDiscardDuplicateLogin = { [weak self] in
+            guard let self else { return false }
+            return self.dualClient.mayDiscardInactiveLogin(id)
+        }
+    }
+    private func removeVerifiedDuplicateLogins() {
+        guard started else { return }
+        let duplicates = duplicateAccountIDs
+        for entry in accountEntries where duplicates.contains(entry.id) && entry.state.verified {
+            guard let scope = entry.state.snapshot?.accountScope, entry.state.isDuplicateScope?(scope) == true else { continue }
+            entry.state.rejectDuplicateLogin()
+        }
+    }
+    private func rejectDuplicateLogin() {
+        guard codexHome != nil, canDiscardDuplicateLogin?() == true, !isSigningOut, !isSigningIn else { return }
+        invalidateConnection()
+        clearAccount()
+        isSigningOut = true
+        loginMessage = "此账号已登录，正在清除重复登录…"
+        lastFailure = .authRequired
+        authRecoveryAfter = nil
+        let barrier = connectionBarrier
+        connectionBarrier = Task { [weak self, client] in
+            await barrier?.value
+            guard let self else { return }
+            defer { isSigningOut = false; onDisplayChange?() }
+            do {
+                try await client.discardDuplicateLogin()
+                loginMessage = "此账号已登录。请登录另一个账号。"
+            } catch {
+                loginMessage = "此账号已登录，清除重复登录失败。请重新核验后重试。"
+            }
+        }
     }
     let reminders: ResetCreditReminderController
     let lowQuotaReminders: LowQuotaReminderController
@@ -98,15 +145,31 @@ final class AppState: ObservableObject {
     }
     var expandsCreditDetailsByDefault: Bool { false }
     var showsTokenActivity: Bool { !homeAccounts.isEmpty }
+    var duplicateAccountIDs: Set<String> {
+        var seen = Set<String>()
+        var duplicates = Set<String>()
+        let entries = accountEntries
+        let active = dualClient.activeProfileID
+        for entry in entries.filter({ $0.id == active }) + entries.filter({ $0.id != active }) {
+            guard let scope = entry.state.snapshot?.accountScope else { continue }
+            if !seen.insert(scope).inserted { duplicates.insert(entry.id) }
+        }
+        return duplicates
+    }
     var homeAccounts: [(id: String, state: AppState)] {
-        orderedAccounts.filter { $0.state.snapshot?.accountScope != nil }
+        let duplicates = duplicateAccountIDs
+        return orderedAccounts.filter { $0.state.snapshot?.accountScope != nil && !duplicates.contains($0.id) }
     }
     var displayedAccount: AppState {
-        if let selectedAccountID, let entry = accountEntries.first(where: { $0.id == selectedAccountID }),
-           managingAccounts || entry.state.snapshot?.accountScope != nil { return entry.state }
+        let visible = homeAccounts
+        if let selectedAccountID, let entry = accountEntries.first(where: { $0.id == selectedAccountID }) {
+            if managingAccounts { return entry.state }
+            if let scope = entry.state.snapshot?.accountScope,
+               let matching = visible.first(where: { $0.state.snapshot?.accountScope == scope }) { return matching.state }
+        }
         let legacy = showingSecondAccountDetails ? (secondAccount ?? self) : self
-        if managingAccounts || legacy.snapshot?.accountScope != nil { return legacy }
-        return homeAccounts.first(where: { $0.id == dualClient.activeProfileID })?.state ?? homeAccounts.first?.state ?? self
+        if managingAccounts || visible.contains(where: { $0.state === legacy }) { return legacy }
+        return visible.first?.state ?? self
     }
     /// Browsing another account in the panel never changes the menu bar's source.
     var menuBarAccount: AppState {
@@ -121,10 +184,11 @@ final class AppState: ObservableObject {
         pendingSwitchConfirmation = nil
     }
     func accountRole(_ id: String) -> String {
+        if duplicateAccountIDs.contains(id) { return "重复账号" }
         guard dualClient.detected else { return "登录待确认" }
         if id == dualClient.activeProfileID { return "主账号" }
         guard accountEntries.first(where: { $0.id == id })?.state.snapshot?.accountScope != nil else { return "待登录账号" }
-        let backups = orderedBackupAccounts.filter { $0.state.snapshot?.accountScope != nil }
+        let backups = homeAccounts.filter { $0.id != dualClient.activeProfileID }
         return "备用账号 \( (backups.firstIndex(where: { $0.id == id }) ?? 0) + 1)"
     }
     var orderedBackupAccounts: [(id: String, state: AppState)] {
@@ -140,6 +204,12 @@ final class AppState: ObservableObject {
     }
     func addAccount(startLogin: Bool = true) {
         guard codexHome == nil else { return }
+        if startLogin, dualClient.detected, !dualClient.isSwitching,
+           let duplicate = accountEntries.first(where: { $0.id != "primary" && duplicateAccountIDs.contains($0.id)
+               && !$0.state.isSigningIn && !$0.state.isSigningOut }) {
+            duplicate.state.signInSecondAccount()
+            return
+        }
         if secondAccount == nil { setSecondAccountEnabled(true); if startLogin { secondAccount?.signInSecondAccount() }; return }
         let id = UUID().uuidString
         additionalAccountIDs.append(id)
@@ -149,7 +219,11 @@ final class AppState: ObservableObject {
     }
     func canDeleteAccount(_ id: String) -> Bool {
         dualClient.detected && id != dualClient.activeProfileID && !dualClient.isSwitching && deletingAccountID == nil
+            && !duplicateAccountIDs.contains(id)
             && accountEntries.contains { $0.id == id && !$0.state.isSigningOut }
+    }
+    func canSwitchAccount(_ id: String) -> Bool {
+        deletingAccountID == nil && !duplicateAccountIDs.contains(id) && dualClient.canSwitchToProfile(id)
     }
     func requestAccountDeletion(_ id: String) {
         guard canDeleteAccount(id) else { return }
@@ -204,6 +278,7 @@ final class AppState: ObservableObject {
         let account = AppState(defaults: saved, client: CodexClient(codexHome: home), reminderCenter: MonitoringOnlyReminderCenter(), codexHome: home)
         account.onSignedOut = { [weak self] in self?.dualClient.profileSignedOut(id) }
         account.preferences = preferences
+        configureDuplicateLoginChecks(for: account, id: id)
         account.onDisplayChange = { [weak self] in self?.objectWillChange.send(); self?.onDisplayChange?() }
         account.onReminderDataChange = { [weak self, weak account] in
             self?.syncActiveReminders()
@@ -315,6 +390,7 @@ final class AppState: ObservableObject {
             }
             secondary.onSignedOut = { [weak self] in self?.dualClient.profileSignedOut("secondary") }
             secondary.preferences = preferences
+            configureDuplicateLoginChecks(for: secondary, id: "secondary")
             secondary.onDisplayChange = { [weak self] in self?.objectWillChange.send(); self?.onDisplayChange?() }
             secondary.onReminderDataChange = { [weak self, weak secondary] in
                 self?.syncActiveReminders()
@@ -630,14 +706,30 @@ final class AppState: ObservableObject {
             }
             do {
                 try Task.checkCancellation()
+                if canDiscardDuplicateLogin?() == true {
+                    let scope = try? await client.readAccountScope(customPath: custom)
+                    guard isCurrent(request, epoch: epoch) else { return }
+                    guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
+                    if let scope, isDuplicateScope?(scope) == true, canDiscardDuplicateLogin?() == true {
+                        rejectDuplicateLogin()
+                        return
+                    }
+                }
                 let result = try await client.fetch(customPath: custom)
                 guard isCurrent(request, epoch: epoch) else { return }
                 guard identity == accountEpoch else { finishRefresh(request, epoch: epoch); return }
+                if let scope = result.accountScope, isDuplicateScope?(scope) == true, canDiscardDuplicateLogin?() == true {
+                    rejectDuplicateLogin()
+                    return
+                }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; activityAttemptAt = nil }
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 if codexHome != nil { loginMessage = "账号已核验。" }
                 updateReminderData()
-                if codexHome == nil { recheckDesktopAfterQuotaVerification() }
+                if codexHome == nil {
+                    recheckDesktopAfterQuotaVerification()
+                    removeVerifiedDuplicateLogins()
+                }
                 configureCreditCheck()
                 cancelRetry()
                 if result.accountScope != nil, let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: "quota-cache.v1") }

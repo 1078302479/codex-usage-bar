@@ -102,6 +102,7 @@ struct UsageSettingsView: View {
                 Section("多账号管理") {
                     Button("添加账号") { state.addAccount() }.buttonStyle(OrbitActionStyle(prominent: true))
                     ForEach(state.orderedAccounts, id: \.id) { entry in
+                        let duplicate = state.duplicateAccountIDs.contains(entry.id)
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text(state.accountRole(entry.id)).font(.headline)
@@ -110,7 +111,7 @@ struct UsageSettingsView: View {
                                     ProgressView().controlSize(.small)
                                     Text("正在删除…").font(.caption).foregroundStyle(.secondary)
                                 }
-                                if entry.id != state.dualClient.activeProfileID {
+                                if entry.id != state.dualClient.activeProfileID && !duplicate {
                                     OrbitSwitchButton(owner: state, account: entry.state, controller: state.dualClient, profileID: entry.id)
 
                                     Button(role: .destructive) { state.requestAccountDeletion(entry.id) } label: {
@@ -119,7 +120,8 @@ struct UsageSettingsView: View {
                                         .disabled(!state.canDeleteAccount(entry.id))
                                 }
                             }
-                            SecondaryAccountSettingsView(state: entry.state)
+                            SecondaryAccountSettingsView(state: entry.state, duplicate: duplicate,
+                                                         canReplaceDuplicate: state.dualClient.detected && !state.dualClient.isSwitching)
                         }
                     }
                     Text("当前客户端登录用户为主账号，其余为备用账号。所有账号共用本地工作空间，登录凭证独立。")

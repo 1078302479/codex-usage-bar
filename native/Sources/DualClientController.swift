@@ -129,6 +129,14 @@ final class DualClientController: ObservableObject {
     var profiles: (() -> [(id: String, home: URL?, scope: String?)])?
     var onActiveProfile: ((String) -> Void)?
     @Published private(set) var activeProfileID: String?
+    private var activeScope: String?
+    var confirmedScope: String? { detected ? activeScope : nil }
+    func mayDiscardInactiveLogin(_ id: String) -> Bool {
+        guard !isSwitching else { return false }
+        if detected { return activeProfileID != id }
+        guard let bundleID = Bundle(url: URL(fileURLWithPath: "/Applications/ChatGPT.app"))?.bundleIdentifier else { return true }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+    }
     @Published var targetProfileID = "primary"
     var accountScopes: (() -> (primary: String?, secondary: String?))?
     var cliPath: (() -> String)?
@@ -143,6 +151,7 @@ final class DualClientController: ObservableObject {
     @Published private(set) var detected = false
     private var lastDetection = Date.distantPast
     private var detecting = false
+    private var detectionGeneration = 0
     private static let detectionLog = Logger(subsystem: "com.guoyuming.UsageBar", category: "DesktopAccount")
     nonisolated static func detectProfile(processList: String, desktopPIDs: Set<Int32>) -> String? {
         let rows = processList.split(separator: "\n").compactMap { line -> (Int32, Int32, String)? in
@@ -193,7 +202,9 @@ final class DualClientController: ObservableObject {
         let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
         guard !pids.isEmpty else { markAccountUncertain("Desktop is not running"); return }
         detecting = true; lastDetection = Date()
+        let generation = detectionGeneration
         Task {
+            defer { detecting = false }
             let profileList = profiles?() ?? []
             let result = await Task.detached { () -> String? in
                 let process = Process(); let pipe = Pipe()
@@ -206,21 +217,24 @@ final class DualClientController: ObservableObject {
                 let list = String(decoding: data, as: UTF8.self)
                 return Self.detectProfile(processList: list, desktopPIDs: pids)
             }.value
-            guard !isSwitching else { detecting = false; return }
-            guard let result else { detecting = false; markAccountUncertain("Desktop backend could not be identified"); return }
-            // Process ancestry locates the desktop's login home, not its user identity.
-            // Verify that home's current login against the monitored account identities.
-            let probeHome = profileList.first(where: { $0.id == result })?.home ?? (result == "secondary" ? AppState.secondAccountHome : nil)
+            guard !isSwitching, generation == detectionGeneration else { return }
+            guard let result else { markAccountUncertain("Desktop backend could not be identified"); return }
+            let profile = profileList.first { $0.id == result }
+            guard result == "primary" || result == "secondary" || profile?.home != nil else {
+                markAccountUncertain("Desktop backend refers to an unknown login home"); return
+            }
+            let probeHome = profile?.home ?? (result == "secondary" ? AppState.secondAccountHome : nil)
             let probe = CodexClient(codexHome: probeHome)
+            defer { Task { await probe.shutdown() } }
             let scope: String?
             do { scope = try await probe.readAccountScope(customPath: "/Applications/ChatGPT.app") }
             catch { scope = nil }
-            await probe.shutdown()
-            detecting = false
-            guard !isSwitching else { return }
+            guard !isSwitching, generation == detectionGeneration else { return }
+            let currentPIDs = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
+            guard currentPIDs == pids else { markAccountUncertain("Desktop restarted during login verification"); return }
             guard let scope else { markAccountUncertain("Desktop backend account/read returned no verified identity"); return }
-            if !profileList.isEmpty {
-                guard confirmProfile(scope: scope, preferredProfileID: result) else {
+            if profiles != nil {
+                guard confirmDesktopLogin(profileID: result, scope: scope) else {
                     markAccountUncertain("Desktop identity did not match a verified profile"); return
                 }
                 return
@@ -234,8 +248,26 @@ final class DualClientController: ObservableObject {
     }
     private func markAccountUncertain(_ reason: String) {
         Self.detectionLog.notice("\(reason, privacy: .public)")
+        activeScope = nil
         detected = false
         onAccountUncertain?()
+    }
+    // The live identity is read from the home identified by the running backend.
+    // Quota snapshots in other homes may be stale or contain the same login.
+    @discardableResult
+    func confirmDesktopLogin(profileID: String, scope: String) -> Bool {
+        guard profiles?().contains(where: { $0.id == profileID }) == true else { return false }
+        let changed = !detected || activeProfileID != profileID || activeScope != scope
+        activeScope = scope
+        activeProfileID = profileID
+        defaults.set(profileID, forKey: "execution-account.profile.v1")
+        activeSecondary = profileID != "primary"
+        detected = true
+        if changed {
+            Self.detectionLog.notice("Desktop login verified from the running backend's home")
+            onActiveProfile?(profileID)
+        }
+        return true
     }
     @discardableResult
     func confirmProfile(scope: String?, preferredProfileID: String? = nil) -> Bool {
@@ -249,16 +281,7 @@ final class DualClientController: ObservableObject {
         else if let preferredProfileID { match = matches.first { $0.id == preferredProfileID } }
         else { match = nil }
         guard let match else { return false }
-        let changed = !detected || activeProfileID != match.id
-        activeProfileID = match.id
-        defaults.set(match.id, forKey: "execution-account.profile.v1")
-        activeSecondary = match.id != "primary"
-        detected = true
-        if changed {
-            Self.detectionLog.notice("Desktop identity matched a verified profile")
-            onActiveProfile?(match.id)
-        }
-        return true
+        return confirmDesktopLogin(profileID: match.id, scope: scope)
     }
     nonisolated static func matchAccount(scope: String?, primary: String?, secondary: String?) -> Bool? {
         guard let scope else { return nil }
@@ -278,6 +301,7 @@ final class DualClientController: ObservableObject {
         }
     }
     func restartSucceeded(secondary: Bool, label: String) {
+        activeScope = nil
         selectedSecondary = secondary
         activeSecondary = secondary
         activeProfileID = secondary ? "secondary" : "primary"
@@ -299,13 +323,22 @@ final class DualClientController: ObservableObject {
     }
     func profileSignedOut(_ id: String) {
         if activeProfileID == id {
+            detectionGeneration += 1
+            activeScope = nil
             detected = false
             onAccountUncertain?()
         }
     }
+    func canSwitchToProfile(_ id: String) -> Bool {
+        let entries = profiles?() ?? []
+        guard detected, !isSwitching, id != activeProfileID, let activeScope,
+              let scope = entries.first(where: { $0.id == id })?.scope, scope != activeScope,
+              entries.first(where: { $0.scope == scope })?.id == id else { return false }
+        let current = entries.first { $0.id == activeProfileID }?.scope
+        return current == nil || current == activeScope
+    }
     func switchToProfile(_ id: String, cliPath: String) {
-        guard detected, !isSwitching, id != activeProfileID,
-              profiles?().contains(where: { $0.id == id && $0.scope != nil }) == true else { return }
+        guard canSwitchToProfile(id) else { return }
         targetProfileID = id
         selectedSecondary = id != "primary"
         switchAndRestart(cliPath: cliPath)
@@ -314,6 +347,8 @@ final class DualClientController: ObservableObject {
         guard !isSwitching else { return }
         let profileID = profiles == nil ? (selectedSecondary ? "secondary" : "primary") : targetProfileID
         let useSecondary = profileID != "primary"
+        let expectedScope = profiles?().first(where: { $0.id == profileID })?.scope
+        detectionGeneration += 1
         isSwitching = true
         Task {
             defer { isSwitching = false }
@@ -326,7 +361,14 @@ final class DualClientController: ObservableObject {
                 let snapshot: QuotaSnapshot
                 do { snapshot = try await check.fetch(customPath: cliPath); await check.shutdown() }
                 catch { await check.shutdown(); throw error }
-                guard snapshot.accountScope != nil else { throw CodexFailure.authRequired }
+                guard let scope = snapshot.accountScope else { throw CodexFailure.authRequired }
+                if profiles != nil {
+                    guard detected, scope == expectedScope, scope != activeScope,
+                          profiles?().first(where: { $0.id == profileID })?.scope == scope else {
+                        message = "所选账号与当前登录相同，或登录已变化。请重新核验后再切换。"
+                        return
+                    }
+                }
                 let apps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
                 for running in apps { _ = running.terminate() }
                 for _ in 0..<150 {

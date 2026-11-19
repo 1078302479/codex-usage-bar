@@ -53,7 +53,7 @@ struct OrbitSwitchButton: View {
     var title = "切换账号"
     @Environment(\.orbitPreview) private var preview
     private var enabled: Bool {
-        controller.detected && profileID != controller.activeProfileID && account.verified && !account.isSigningOut && !account.isSigningIn && !controller.isSwitching && owner.deletingAccountID == nil
+        owner.canSwitchAccount(profileID)
     }
     var body: some View {
         Button { owner.pendingSwitchConfirmation = profileID } label: {

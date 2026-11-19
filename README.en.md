@@ -8,6 +8,13 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.16 · Duplicate login prevention
+
+- Adding a backup account now checks its identity. If the account is already signed in, the app clears the duplicate backup login and asks you to choose another account.
+- Verifies the current login from the running Codex backend's login directory, even while quota data is loading.
+
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.16.md)
+
 ## v0.1.15 · Account detection and menu bar colors
 
 - Rechecks the active account after successful quota verification so that account switching can recover when login confirmation is pending.

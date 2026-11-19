@@ -15,11 +15,15 @@ protocol QuotaClient: Sendable {
     func shutdown() async
     func beginLogin(customPath: String) async throws -> URL
     func logout(customPath: String) async throws
+    func readAccountScope(customPath: String) async throws -> String?
+    func discardDuplicateLogin() async throws
 }
 
 extension QuotaClient {
     func logout(customPath: String) async throws { throw CodexFailure.unsupported }
     func beginLogin(customPath: String) async throws -> URL { throw CodexFailure.unsupported }
+    func readAccountScope(customPath: String) async throws -> String? { nil }
+    func discardDuplicateLogin() async throws { throw CodexFailure.unsupported }
 }
 
 actor CodexClient: QuotaClient {
@@ -77,6 +81,21 @@ actor CodexClient: QuotaClient {
         _ = try await rpc("account/logout")
         // The caller schedules shutdown after publishing successful logout.
         // Waiting for process exit here delays removal from the account list.
+    }
+
+    func discardDuplicateLogin() throws {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/CodexUsageBar/accounts")
+        guard let home = codexHome?.standardizedFileURL,
+              home.deletingLastPathComponent().path == root.path,
+              home.lastPathComponent == "secondary" || UUID(uuidString: home.lastPathComponent) != nil,
+              home.resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().appendingPathComponent(home.lastPathComponent).path else {
+            throw CodexFailure.invalidResponse
+        }
+        shutdown()
+        // Remove the isolated file without invoking server-side token revocation.
+        let file = home.appendingPathComponent("auth.json")
+        guard unlink(file.path) == 0 || errno == ENOENT else { throw CodexFailure.serviceUnavailable }
     }
 
     static func isOfficialLoginURL(_ url: URL) -> Bool {

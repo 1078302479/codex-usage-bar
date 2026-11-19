@@ -5,6 +5,7 @@ private actor ProfileClient: QuotaClient {
     private var handler: (@Sendable (CodexSignal) -> Void)?
     private(set) var shutdowns = 0
     private(set) var logouts = 0
+    private(set) var discardedLogins = 0
     var failLogout = false
     var delayLogoutCleanup = false
     var successfulLogout = false
@@ -23,6 +24,8 @@ private actor ProfileClient: QuotaClient {
     }
     func beginLogin(customPath: String) -> URL { URL(string: "https://auth.openai.com/authorize?fixture=1")! }
     func complete(_ success: Bool) { handler?(.loginCompleted(success)) }
+    func readAccountScope(customPath: String) -> String? { discardedLogins == 0 ? id : nil }
+    func discardDuplicateLogin() { discardedLogins += 1 }
     func logout(customPath: String) throws {
         logouts += 1
         if failLogout { throw CodexFailure.serviceUnavailable }
@@ -67,9 +70,38 @@ private actor ProfileClient: QuotaClient {
         try await deletionConfirmation()
         try await logoutIsolation()
         try await multipleProfiles()
+        try await rejectRepeatedLogin()
         try await coordinator()
         try await transport()
         print("PASS: independent profiles, login lifecycle, environment and process isolation")
+    }
+    @MainActor static func rejectRepeatedLogin() async throws {
+        let suite = "usagebar-repeated-login-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        let backupDefaults = UserDefaults(suiteName: suite + "-backup")!
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            backupDefaults.removePersistentDomain(forName: suite + "-backup")
+        }
+        let activeClient = ProfileClient("same"), backupClient = ProfileClient("same")
+        let backup = AppState(defaults: backupDefaults, client: backupClient, reminderCenter: MonitoringOnlyReminderCenter(),
+                              codexHome: URL(fileURLWithPath: "/fixture/duplicate"), loginOpener: { _ in true })
+        let owner = AppState(defaults: defaults, client: activeClient, secondaryFactory: { backup })
+        owner.setSecondAccountEnabled(true)
+        owner.refresh()
+        try await wait("active fixture login") { owner.verified }
+        precondition(owner.dualClient.confirmProfile(scope: "same"))
+        backup.signInSecondAccount()
+        try await wait("official login started") { backup.loginMessage == "请在浏览器完成该账号登录。" }
+        await backupClient.complete(true)
+        try await wait("duplicate credential discarded") { backup.loginMessage == "此账号已登录。请登录另一个账号。" }
+        precondition(!backup.verified && backup.snapshot == nil && owner.homeAccounts.count == 1)
+        let backupDiscards = await backupClient.discardedLogins
+        let backupLogouts = await backupClient.logouts
+        let activeDiscards = await activeClient.discardedLogins
+        precondition(backupDiscards == 1 && backupLogouts == 0 && activeDiscards == 0 && owner.verified)
+        await owner.stop()
+        print("PASS: duplicate login rejected without disturbing active credentials")
     }
     @MainActor static func deletionConfirmation() async throws {
         let suite = "usagebar-delete-" + UUID().uuidString
@@ -215,15 +247,26 @@ private actor ProfileClient: QuotaClient {
         precondition(state.dualClient.confirmProfile(scope: "user-1"))
         precondition(state.orderedAccounts.first?.id == "secondary", "Free current user stays primary ahead of Plus backups")
 
-        // Duplicate login identities are valid when profiles have distinct auth homes.
+        // Existing duplicate homes collapse to the backend's confirmed profile.
         let duplicate = state.accountEntries[3]
         let originalDuplicate = duplicate.state.snapshot
         duplicate.state.snapshot = secondEntry.state.snapshot
+        precondition(state.duplicateAccountIDs == [duplicate.id])
+        precondition(state.homeAccounts.count == 3)
+        state.selectedAccountID = duplicate.id
+        precondition(state.displayedAccount === secondEntry.state)
+        precondition(!state.canSwitchAccount(duplicate.id) && !state.canDeleteAccount(duplicate.id))
         precondition(!state.dualClient.confirmProfile(scope: "user-1"), "No hint must leave duplicate identities ambiguous")
         precondition(!state.dualClient.confirmProfile(scope: "user-1", preferredProfileID: "primary"), "Unrelated home cannot override identity verification")
-        precondition(state.dualClient.confirmProfile(scope: "user-1", preferredProfileID: duplicate.id), "Verified desktop home disambiguates duplicated login")
+        precondition(state.dualClient.confirmDesktopLogin(profileID: duplicate.id, scope: "user-1"))
         precondition(state.dualClient.activeProfileID == duplicate.id)
+        precondition(state.duplicateAccountIDs == ["secondary"])
+        precondition(!state.canSwitchAccount("secondary") && state.canSwitchAccount("primary"))
+        duplicate.state.snapshot = nil
+        precondition(state.dualClient.confirmDesktopLogin(profileID: duplicate.id, scope: "user-1"), "Desktop login must be recognized before quotas arrive")
+        precondition(state.dualClient.detected && !state.dualClient.canSwitchToProfile("secondary"))
         duplicate.state.snapshot = originalDuplicate
+        precondition(state.homeAccounts.count == 4 && state.duplicateAccountIDs.isEmpty)
 
         let fixture = "10 1 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n11 10 /fixture/codex -c usagebar_account_id=\"" + third.id + "\" -c sqlite_home=/fixture -c cli_auth_credentials_store=file app-server\n12 11 /fixture/codex app-server"
         precondition(DualClientController.detectProfile(processList: fixture, desktopPIDs: [10]) == third.id)
