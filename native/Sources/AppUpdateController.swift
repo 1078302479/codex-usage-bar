@@ -64,7 +64,7 @@ final class AppUpdateController: ObservableObject {
     private var workDirectory: URL?
     private var installerProcess: Process?
     private var window: NSWindow?
-    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.14", defaults: UserDefaults = .standard) {
+    init(version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.15", defaults: UserDefaults = .standard) {
         currentVersion = version; self.defaults = defaults
         lastChecked = defaults.object(forKey: "updates.last-success.v1") as? Date
         acceptsPrereleases = defaults.bool(forKey: "updates.accepts-prereleases.v1")

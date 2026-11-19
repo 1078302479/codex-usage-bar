@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 
 @MainActor
 final class DualClientController: ObservableObject {
@@ -142,6 +143,7 @@ final class DualClientController: ObservableObject {
     @Published private(set) var detected = false
     private var lastDetection = Date.distantPast
     private var detecting = false
+    private static let detectionLog = Logger(subsystem: "com.guoyuming.UsageBar", category: "DesktopAccount")
     nonisolated static func detectProfile(processList: String, desktopPIDs: Set<Int32>) -> String? {
         let rows = processList.split(separator: "\n").compactMap { line -> (Int32, Int32, String)? in
             let parts = line.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: { $0 == " " || $0 == "\t" })
@@ -154,7 +156,10 @@ final class DualClientController: ObservableObject {
             for (pid, parent, _) in rows where descendants.contains(parent) { descendants.insert(pid) }
             if descendants.count == before { break }
         }
-        let candidates = rows.filter { descendants.contains($0.0) && $0.2.contains("/codex ") && $0.2.contains("app-server") }
+        let candidates = rows.filter { row in
+            guard descendants.contains(row.0), let executableEnd = row.2.range(of: "/codex ")?.upperBound else { return false }
+            return row.2[executableEnd...].split(whereSeparator: \.isWhitespace).contains("app-server")
+        }
         let serverIDs = Set(candidates.map { $0.0 })
         let parents = Dictionary(rows.map { ($0.0, $0.1) }, uniquingKeysWith: { first, _ in first })
         // Tools launched inside a chat may themselves spawn quota app-servers.
@@ -186,22 +191,23 @@ final class DualClientController: ObservableObject {
         guard !isSwitching, !detecting, Date().timeIntervalSince(lastDetection) > 3 else { return }
         guard let bundleID = Bundle(url: URL(fileURLWithPath: "/Applications/ChatGPT.app"))?.bundleIdentifier else { return }
         let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
-        guard !pids.isEmpty else { detected = false; onAccountUncertain?(); return }
+        guard !pids.isEmpty else { markAccountUncertain("Desktop is not running"); return }
         detecting = true; lastDetection = Date()
         Task {
             let profileList = profiles?() ?? []
             let result = await Task.detached { () -> String? in
                 let process = Process(); let pipe = Pipe()
                 process.executableURL = URL(fileURLWithPath: "/bin/ps")
-                process.arguments = ["-axo", "pid=,ppid=,command="]
+                process.arguments = ["-ww", "-axo", "pid=,ppid=,command="]
                 process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
                 do { try process.run() } catch { return nil }
                 let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-                guard process.terminationStatus == 0, let list = String(data: data, encoding: .utf8) else { return nil }
+                guard process.terminationStatus == 0 else { return nil }
+                let list = String(decoding: data, as: UTF8.self)
                 return Self.detectProfile(processList: list, desktopPIDs: pids)
             }.value
             guard !isSwitching else { detecting = false; return }
-            guard let result else { detecting = false; detected = false; onAccountUncertain?(); return }
+            guard let result else { detecting = false; markAccountUncertain("Desktop backend could not be identified"); return }
             // Process ancestry locates the desktop's login home, not its user identity.
             // Verify that home's current login against the monitored account identities.
             let probeHome = profileList.first(where: { $0.id == result })?.home ?? (result == "secondary" ? AppState.secondAccountHome : nil)
@@ -212,18 +218,24 @@ final class DualClientController: ObservableObject {
             await probe.shutdown()
             detecting = false
             guard !isSwitching else { return }
+            guard let scope else { markAccountUncertain("Desktop backend account/read returned no verified identity"); return }
             if !profileList.isEmpty {
                 guard confirmProfile(scope: scope, preferredProfileID: result) else {
-                    detected = false; onAccountUncertain?(); return
+                    markAccountUncertain("Desktop identity did not match a verified profile"); return
                 }
                 return
             }
             let scopes = accountScopes?()
             guard let matched = Self.matchAccount(scope: scope, primary: scopes?.primary, secondary: scopes?.secondary) else {
-                detected = false; onAccountUncertain?(); return
+                markAccountUncertain("Desktop identity did not match a verified profile"); return
             }
             acceptDetectedAccount(matched)
         }
+    }
+    private func markAccountUncertain(_ reason: String) {
+        Self.detectionLog.notice("\(reason, privacy: .public)")
+        detected = false
+        onAccountUncertain?()
     }
     @discardableResult
     func confirmProfile(scope: String?, preferredProfileID: String? = nil) -> Bool {
@@ -242,7 +254,10 @@ final class DualClientController: ObservableObject {
         defaults.set(match.id, forKey: "execution-account.profile.v1")
         activeSecondary = match.id != "primary"
         detected = true
-        if changed { onActiveProfile?(match.id) }
+        if changed {
+            Self.detectionLog.notice("Desktop identity matched a verified profile")
+            onActiveProfile?(match.id)
+        }
         return true
     }
     nonisolated static func matchAccount(scope: String?, primary: String?, secondary: String?) -> Bool? {

@@ -60,6 +60,10 @@ final class AppState: ObservableObject {
         if codexHome != nil { onReminderDataChange?() }
         else { syncActiveReminders(force: true) }
     }
+    private func recheckDesktopAfterQuotaVerification() {
+        guard started, !dualClient.detected else { return }
+        dualClient.detectRunningAccount()
+    }
     let reminders: ResetCreditReminderController
     let lowQuotaReminders: LowQuotaReminderController
     @Published var panelHeight: CGFloat = 800
@@ -201,7 +205,10 @@ final class AppState: ObservableObject {
         account.onSignedOut = { [weak self] in self?.dualClient.profileSignedOut(id) }
         account.preferences = preferences
         account.onDisplayChange = { [weak self] in self?.objectWillChange.send(); self?.onDisplayChange?() }
-        account.onReminderDataChange = { [weak self] in self?.syncActiveReminders() }
+        account.onReminderDataChange = { [weak self, weak account] in
+            self?.syncActiveReminders()
+            if account?.verified == true { self?.recheckDesktopAfterQuotaVerification() }
+        }
         additionalAccounts[id] = account
         if started { account.start() }
         account.setPanelVisible(panelVisible)
@@ -309,7 +316,10 @@ final class AppState: ObservableObject {
             secondary.onSignedOut = { [weak self] in self?.dualClient.profileSignedOut("secondary") }
             secondary.preferences = preferences
             secondary.onDisplayChange = { [weak self] in self?.objectWillChange.send(); self?.onDisplayChange?() }
-            secondary.onReminderDataChange = { [weak self] in self?.syncActiveReminders() }
+            secondary.onReminderDataChange = { [weak self, weak secondary] in
+                self?.syncActiveReminders()
+                if secondary?.verified == true { self?.recheckDesktopAfterQuotaVerification() }
+            }
             secondAccount = secondary
             showingSecondAccountDetails = dualClient.activeSecondary
             if started { secondary.start() }
@@ -627,6 +637,7 @@ final class AppState: ObservableObject {
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 if codexHome != nil { loginMessage = "账号已核验。" }
                 updateReminderData()
+                if codexHome == nil { recheckDesktopAfterQuotaVerification() }
                 configureCreditCheck()
                 cancelRetry()
                 if result.accountScope != nil, let data = try? JSONEncoder().encode(result) { defaults.set(data, forKey: "quota-cache.v1") }

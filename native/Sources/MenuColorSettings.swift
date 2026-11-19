@@ -9,7 +9,8 @@ struct MenuColorRulesView: View {
     var body: some View {
         Section(title) {
             if rules.isEmpty {
-                Text("使用默认字体颜色（当前为白色）").font(.caption).foregroundStyle(.secondary)
+                Text("默认配色与账号列表一致。剩余 20% 及以下为红色，超过 20% 至 50% 为琥珀色，超过 50% 为绿色。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             ForEach($rules) { $rule in
                 VStack(alignment: .leading, spacing: 6) {
@@ -40,7 +41,7 @@ struct MenuColorRulesView: View {
                 Spacer()
                 if !rules.isEmpty { Button("恢复默认") { rules = [] } }
             }
-            Text("按真实剩余比例匹配，含两端边界；重叠时优先使用上方规则。未命中区间、额度未知时使用原默认颜色。")
+            Text("按真实剩余比例匹配，包含两端。重叠时优先使用上方规则，未命中时使用三档默认配色。")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

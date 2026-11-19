@@ -270,10 +270,8 @@ private struct OrbitAccountOption: View {
                             Text(window.label).font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
                             if let remaining = window.remaining {
                                 let rules = window.id == 0 ? preferences.primaryColorRules : preferences.secondaryColorRules
-                                let color = MenuBarRenderer.colorHex(remaining: remaining, rules: rules)
-                                    .map { Color(nsColor: MenuBarRenderer.color($0)) }
-                                let quotaColor = preferences.followsQuotaColors
-                                    ? color ?? PanelPalette.primary : PanelPalette.remainingQuotaText(remaining)
+                                let quotaColor = Color(nsColor: MenuBarRenderer.percentageColor(
+                                    remaining: remaining, rules: preferences.followsQuotaColors ? rules : nil))
                                 Text(QuotaPresentation.percent(remaining))
                                     .font(.system(size: 17, weight: .semibold)).monospacedDigit()
                                     .foregroundStyle(quota.cached ? PanelPalette.secondary : quotaColor)

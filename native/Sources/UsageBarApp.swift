@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let lines: [String]
         let showIcon: Bool
         let appearance: AppAppearance
-        let colors: [[String?]]
+        let colors: [[NSColor]]
     }
 
     init(state: AppState = AppState()) {

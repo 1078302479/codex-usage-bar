@@ -63,6 +63,7 @@ private actor ProfileClient: QuotaClient {
         precondition(DualClientController.matchAccount(scope: "A", primary: "A", secondary: "A") == nil)
         precondition(DualClientController.matchAccount(scope: nil, primary: "A", secondary: "B") == nil)
         precondition(DualClientController.detectSecondary(processList: fixture + "\n33 11 /fixture/codex app-server", desktopPIDs: [10]) == true, "Nested tool probes must not override the desktop login")
+        precondition(DualClientController.detectSecondary(processList: fixture + "\n34 10 /fixture/codex --remote app-server-sidecar", desktopPIDs: [10]) == true, "A sibling CLI with an app-server substring is not the desktop backend")
         try await deletionConfirmation()
         try await logoutIsolation()
         try await multipleProfiles()

@@ -8,6 +8,13 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.15 · Account detection and menu bar colors
+
+- Rechecks the active account after successful quota verification so that account switching can recover when login confirmation is pending.
+- Shares red, amber, and green defaults between the menu bar and account picker. Custom ranges take priority.
+
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.15.md)
+
 ## v0.1.14 · Automatic update backup cleanup
 
 After a successful in-app update, CodexUsageBar keeps one rollback copy of the previous version for 72 hours. If the app is closed when the backup expires, it removes the copy the next time it opens.
@@ -48,7 +55,7 @@ This is an independent community project, not an official OpenAI application or 
 - Online update checks at startup and at most once every 24 hours, with a new-release entry in the popup and manual checks in settings. Review release notes, download and verify the matching archive, then explicitly install and restart.
 
 - Remaining allowance and reset times for independent short-term and weekly windows; actual durations come from the service.
-- Independent remaining-percentage color ranges for short- and long-term menu-bar quotas, including stacked mode. Default text colors remain unchanged.
+- The menu bar and account picker share red, amber, and green defaults. Short- and long-term percentage colors can be customized independently in both horizontal and stacked layouts.
 - Circular quota gauges, a compact account/subscription header and refreshed light/dark activity views.
 - Configurable menu bar metrics, provider icon, labels, plan name, and separators.
 - Stacked mode: weekly allowance above the 5-hour allowance, or a regular single-line layout.
