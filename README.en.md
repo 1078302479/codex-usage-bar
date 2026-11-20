@@ -8,6 +8,13 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.17 · Active account verification recovery
+
+- Fixes a wait for an exited verification process that could block refreshes. Rechecks the active account after startup, wake, or a Codex restart and retries temporary read failures.
+- Preserves the signed-in status of saved accounts. If the app cannot identify the active account, it explains why and offers a retry.
+
+[Stable downloads](https://github.com/1078302479/codex-usage-bar/releases/latest) · [Release notes](docs/releases/v0.1.17.md)
+
 ## v0.1.16 · Duplicate login prevention
 
 - Adding a backup account now checks its identity. If the account is already signed in, the app clears the duplicate backup login and asks you to choose another account.

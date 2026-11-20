@@ -70,10 +70,41 @@ private actor ProfileClient: QuotaClient {
         try await deletionConfirmation()
         try await logoutIsolation()
         try await multipleProfiles()
+        desktopDetectionRecovery()
         try await rejectRepeatedLogin()
         try await coordinator()
         try await transport()
         print("PASS: independent profiles, login lifecycle, environment and process isolation")
+    }
+    @MainActor static func desktopDetectionRecovery() {
+        let suite = "usagebar-desktop-recovery-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = DualClientController(defaults: defaults)
+        controller.profiles = { [("primary", nil, "A"), ("secondary", nil, "B")] }
+        let before = "10 1 /fixture/ChatGPT\n11 10 /fixture/codex app-server\n12 11 /fixture/codex app-server"
+        let after = "10 1 /fixture/ChatGPT\n13 10 /fixture/codex app-server"
+        let backend = DualClientController.detectBackend(processList: before, desktopPIDs: [10])!
+        let replacement = DualClientController.detectBackend(processList: after, desktopPIDs: [10])!
+        precondition(backend.serverPIDs == [11] && replacement.serverPIDs == [13])
+        precondition(controller.confirmDesktopLogin(profileID: "primary", scope: "A", backend: backend))
+        controller.reportDetectionIssue(.readFailed, backend: backend, retry: true)
+        precondition(controller.detected && controller.canSwitchToProfile("secondary"))
+        controller.reportDetectionIssue(.readFailed, backend: replacement)
+        precondition(!controller.detected && !controller.canSwitchToProfile("secondary"))
+        precondition(controller.confirmDesktopLogin(profileID: "primary", scope: "A", backend: replacement))
+        precondition(controller.detectionIssue == nil && controller.canSwitchToProfile("secondary"))
+        controller.reportDetectionIssue(.loginUnavailable)
+        precondition(!controller.detected && !controller.canSwitchToProfile("secondary"))
+        controller.stopDesktopDetection()
+        precondition(!controller.detecting && controller.detectionIssue == nil)
+        precondition(controller.confirmDesktopLogin(profileID: "primary", scope: "A", backend: replacement))
+        for _ in 0..<4 {
+            controller.reportDetectionIssue(.readFailed, backend: replacement, retry: true)
+        }
+        precondition(!controller.detected && controller.detectionIssue == .readFailed)
+        controller.stopDesktopDetection()
+        print("PASS: transient desktop detection failure, backend replacement, retry exhaustion and login recovery")
     }
     @MainActor static func rejectRepeatedLogin() async throws {
         let suite = "usagebar-repeated-login-" + UUID().uuidString
@@ -322,14 +353,14 @@ private actor ProfileClient: QuotaClient {
         // Restore the original uncertain-state fixture for the remaining restart tests.
         first.dualClient.restartSucceeded(secondary: false, label: "Fixture A")
         first.selectedAccountID = nil
-        precondition(first.dualClient.roleLabel(secondary: false) == "登录待确认")
+        precondition(first.accountRole("primary") == "已登录")
         precondition(first.dualClient.orderedSecondary == [false, true])
         first.dualClient.selectedSecondary = true
         precondition(first.dualClient.orderedSecondary == [false, true], "Draft selection must not reorder accounts")
         precondition(first.displayedAccount === first, "Execution draft must not change viewing account")
         first.dualClient.restartSucceeded(secondary: true, label: "Fixture B")
         precondition(first.displayedAccount === second && first.dualClient.selectedSecondary, "Successful B restart synchronizes menu and details")
-        precondition(first.dualClient.roleLabel(secondary: true) == "登录待确认", "Launch alone cannot prove the active backend")
+        precondition(first.accountRole("secondary") == "已登录" && !first.dualClient.detected, "Launch alone cannot prove the active backend")
         precondition(first.dualClient.orderedSecondary == [true, false], "Successful B restart puts B first")
         first.showingSecondAccountDetails = false
         precondition(first.dualClient.orderedSecondary == [true, false], "Viewing A must not reorder execution accounts")
@@ -411,6 +442,13 @@ for line in sys.stdin:
             precondition(!CodexClient.isOfficialLoginURL(URL(string: raw)!))
         }
         await clientA.shutdown()
+        for _ in 0..<3 {
+            let scope = try await clientA.readAccountScope(customPath: script.path)
+            precondition(scope == one.accountScope)
+            let pid = try String(contentsOf: root.appendingPathComponent("A/pid"), encoding: .utf8)
+            await clientA.shutdown()
+            precondition(kill(Int32(pid)!, 0) == -1 && errno == ESRCH, "Shutdown must finish before reopening an account connection")
+        }
         let stillActive = try await clientB.fetch(customPath: script.path)
         precondition(stillActive.accountScope == two.accountScope, "Shutting down A cannot stop B")
         try await clientB.logout(customPath: script.path)

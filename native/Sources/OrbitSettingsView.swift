@@ -100,6 +100,7 @@ struct UsageSettingsView: View {
     private var accountsPage: some View {
         Form {
                 Section("多账号管理") {
+                    DualClientPanelView(controller: state.dualClient)
                     Button("添加账号") { state.addAccount() }.buttonStyle(OrbitActionStyle(prominent: true))
                     ForEach(state.orderedAccounts, id: \.id) { entry in
                         let duplicate = state.duplicateAccountIDs.contains(entry.id)

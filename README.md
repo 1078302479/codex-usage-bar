@@ -9,6 +9,13 @@
 
 Windows 版在 Codex 左侧栏显示额度和重置卡，安装步骤和截图见独立分支。[Windows 分支说明](https://github.com/1078302479/codex-usage-bar/tree/windows) · [Windows 下载页](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.17 · 当前账号核验恢复
+
+- 修复旧核验进程退出后仍可能阻塞刷新和账号识别的问题。启动、唤醒或 Codex 重启后会主动核验，遇到短暂读取失败会自动重试。
+- 已登录账号会保留登录状态。当前账号识别失败时，面板会显示原因并提供「重新核验」。
+
+[正式版下载](https://github.com/1078302479/codex-usage-bar/releases/latest) · [完整版本说明](docs/releases/v0.1.17.md)
+
 ## v0.1.16 · 禁止重复登录
 
 - 添加备用账号时会核对身份。同一账号已登录时，清理备用槽位的重复登录并提示换一个账号。

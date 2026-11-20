@@ -10,6 +10,9 @@ struct OrbitPanelContent: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            if DualClientPanelView.isVisible(controller) {
+                DualClientPanelView(controller: controller).padding(.horizontal, OrbitLayout.inset)
+            }
             if owner.homeAccounts.isEmpty {
                 emptyAccount.padding(.horizontal, OrbitLayout.inset)
             } else {
@@ -32,9 +35,6 @@ struct OrbitPanelContent: View {
                         initiallyExpanded: false).id("credits-" + selectedID)
                     OrbitActivityTeaser(owner: owner, account: owner.displayedAccount)
                         .padding(.horizontal, OrbitLayout.inset)
-                }
-                if owner.homeAccounts.count > 1 {
-                    DualClientPanelView(state: owner, controller: controller)
                 }
             }
         }.padding(.top, 14).padding(.bottom, 17)

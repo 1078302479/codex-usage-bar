@@ -1,11 +1,6 @@
 import Foundation
 import Darwin
 
-private final class OwnedProcess: @unchecked Sendable {
-    let process: Process
-    init(_ process: Process) { self.process = process }
-}
-
 enum CodexSignal: Sendable { case quotaChanged, accountChanged, loginCompleted(Bool), disconnected(CodexFailure) }
 
 protocol QuotaClient: Sendable {
@@ -92,7 +87,7 @@ actor CodexClient: QuotaClient {
               home.resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().appendingPathComponent(home.lastPathComponent).path else {
             throw CodexFailure.invalidResponse
         }
-        shutdown()
+        guard disconnect() else { throw CodexFailure.processStopped }
         // Remove the isolated file without invoking server-side token revocation.
         let file = home.appendingPathComponent("auth.json")
         guard unlink(file.path) == 0 || errno == ENOENT else { throw CodexFailure.serviceUnavailable }
@@ -197,7 +192,7 @@ actor CodexClient: QuotaClient {
     }
 
     private func start(_ executable: String) async throws {
-        shutdown()
+        guard disconnect() else { throw CodexFailure.processStopped }
         let current = UUID(); generation = current
         let task = Process(); let stdin = Pipe(); let stdout = Pipe(); let stderr = Pipe()
         task.executableURL = URL(fileURLWithPath: executable)
@@ -357,21 +352,41 @@ actor CodexClient: QuotaClient {
         return .serviceUnavailable
     }
     func shutdown() {
+        _ = disconnect()
+    }
+
+    private func disconnect() -> Bool {
         generation = UUID(); ready = false
         output?.readabilityHandler = nil; errors?.readabilityHandler = nil
         process?.terminationHandler = nil
         try? input?.close()
+        var stopped = true
         if let running = process, running.isRunning {
-            let owned = OwnedProcess(running)
-            let deadline = DispatchWorkItem {
-                if owned.process.isRunning { Darwin.kill(owned.process.processIdentifier, SIGKILL) }
+            let pid = running.processIdentifier
+            func stillRunning() -> Bool {
+                running.isRunning && (Darwin.kill(pid, 0) == 0 || errno != ESRCH)
             }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2, execute: deadline)
-            running.terminate(); running.waitUntilExit(); deadline.cancel()
+            func waitForExit(upTo seconds: TimeInterval) {
+                let deadline = ProcessInfo.processInfo.systemUptime + seconds
+                while stillRunning() && ProcessInfo.processInfo.systemUptime < deadline {
+                    Thread.sleep(forTimeInterval: 0.02)
+                }
+            }
+            // Foundation's waitUntilExit can block its run loop even after the
+            // child was reaped. Bound shutdown and check whether the PID is gone.
+            if stillRunning() { running.terminate() }
+            waitForExit(upTo: 2)
+            if stillRunning() {
+                Darwin.kill(pid, SIGKILL)
+                waitForExit(upTo: 1)
+            }
+            stopped = !stillRunning()
         }
         try? output?.close(); try? errors?.close()
-        input = nil; output = nil; errors = nil; process = nil
+        input = nil; output = nil; errors = nil
+        if stopped { process = nil }
         buffer.removeAll(); errorTail.removeAll(); deferredUpdates.removeAll(); lastBuckets.removeAll()
         readingQuota = false; failAll(.processStopped)
+        return stopped
     }
 }

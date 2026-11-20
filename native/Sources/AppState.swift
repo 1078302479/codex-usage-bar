@@ -67,8 +67,14 @@ final class AppState: ObservableObject {
         else { syncActiveReminders(force: true) }
     }
     private func recheckDesktopAfterQuotaVerification() {
-        guard started, !dualClient.detected else { return }
-        dualClient.detectRunningAccount()
+        guard started, !paused else { return }
+        if let confirmedScope = dualClient.confirmedScope, let current = reminderAccount,
+           current.verified, let scope = current.snapshot?.accountScope, scope != confirmedScope {
+            dualClient.stopDesktopDetection()
+            dualClient.detectRunningAccount(force: true)
+        } else if !dualClient.detected {
+            dualClient.detectRunningAccount()
+        }
     }
     private func configureDuplicateLoginChecks(for account: AppState, id: String) {
         account.isDuplicateScope = { [weak self] scope in
@@ -185,9 +191,12 @@ final class AppState: ObservableObject {
     }
     func accountRole(_ id: String) -> String {
         if duplicateAccountIDs.contains(id) { return "重复账号" }
-        guard dualClient.detected else { return "登录待确认" }
+        guard let account = accountEntries.first(where: { $0.id == id })?.state else { return "待登录账号" }
+        guard account.snapshot?.accountScope != nil else {
+            return dualClient.detected && id == dualClient.activeProfileID ? "主账号" : "待登录账号"
+        }
+        guard dualClient.detected else { return "已登录" }
         if id == dualClient.activeProfileID { return "主账号" }
-        guard accountEntries.first(where: { $0.id == id })?.state.snapshot?.accountScope != nil else { return "待登录账号" }
         let backups = homeAccounts.filter { $0.id != dualClient.activeProfileID }
         return "备用账号 \( (backups.firstIndex(where: { $0.id == id }) ?? 0) + 1)"
     }
@@ -490,6 +499,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshAllAccounts() {
+        if codexHome == nil && !paused { dualClient.detectRunningAccount(force: true) }
         refresh()
         secondAccount?.refresh()
         for account in additionalAccounts.values { account.refresh() }
@@ -585,6 +595,7 @@ final class AppState: ObservableObject {
         if codexHome == nil {
             additionalAccountIDs = (defaults.stringArray(forKey: "additional-account-ids.v1") ?? []).filter { UUID(uuidString: $0) != nil }
             for id in additionalAccountIDs { loadAdditionalAccount(id) }
+            dualClient.detectRunningAccount(force: true)
         }
     }
 
@@ -639,7 +650,7 @@ final class AppState: ObservableObject {
     }
 
     func panelOpened() {
-        if codexHome == nil { dualClient.detectRunningAccount() }
+        if codexHome == nil && !paused { dualClient.detectRunningAccount() }
         secondAccount?.panelOpened()
         for account in additionalAccounts.values { account.panelOpened() }
         guard !isRefreshing, lastFailure?.canRetry != false, nextRetryAt == nil else { return }
@@ -889,6 +900,7 @@ final class AppState: ObservableObject {
         secondAccount?.pause(); cancelSignIn()
         for account in additionalAccounts.values { account.pause() }
         paused = true; verified = false; invalidateConnection()
+        if codexHome == nil { dualClient.stopDesktopDetection() }
         updateReminderData()
         creditCheckTimer?.invalidate(); creditCheckTimer = nil
         clockTimer?.invalidate(); clockTimer = nil; pollTimer?.invalidate(); pollTimer = nil
@@ -900,9 +912,11 @@ final class AppState: ObservableObject {
         secondAccount?.resume()
         for account in additionalAccounts.values { account.resume() }
         configureClock(); configurePolling(); scheduleRefresh(reason: "唤醒核验", delay: recovery.wakeDelay)
+        if codexHome == nil { dualClient.detectRunningAccount(force: true) }
         onDisplayChange?()
     }
     func stop() async {
+        if codexHome == nil { dualClient.stopDesktopDetection() }
         cancelSignIn()
         if let secondAccount { await secondAccount.stop() }
         for account in additionalAccounts.values { await account.stop() }

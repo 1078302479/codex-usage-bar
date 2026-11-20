@@ -4,6 +4,18 @@ import OSLog
 
 @MainActor
 final class DualClientController: ObservableObject {
+    struct DesktopBackend: Equatable, Sendable {
+        let profileID: String
+        let serverPIDs: Set<Int32>
+    }
+    enum DetectionIssue: String {
+        case desktopMissing = "找不到 Codex 客户端，请检查安装。"
+        case desktopClosed = "Codex 客户端未运行。打开后会自动识别当前账号。"
+        case backendUnavailable = "暂时无法识别 Codex 后端，请确认客户端已打开。"
+        case unknownProfile = "客户端使用的登录目录未在工具中登记。"
+        case loginUnavailable = "Codex 后端没有返回已登录账号，请检查客户端登录。"
+        case readFailed = "暂时无法读取 Codex 当前账号。"
+    }
     @Published private(set) var message: String?
     static var root: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/CodexUsageBar/account-switch") }
     static var primaryHome: URL { CodexClient.primaryHome() }
@@ -149,11 +161,20 @@ final class DualClientController: ObservableObject {
         activeProfileID = defaults.string(forKey: "execution-account.profile.v1") ?? (selectedSecondary ? "secondary" : "primary")
     }
     @Published private(set) var detected = false
+    @Published private(set) var detectionIssue: DetectionIssue?
+    @Published private(set) var detecting = false
     private var lastDetection = Date.distantPast
-    private var detecting = false
+    private var detectionTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
+    private var retriesRemaining = 3
+    private var confirmedBackend: DesktopBackend?
+    private var firstReadFailureAt: Date?
     private var detectionGeneration = 0
     private static let detectionLog = Logger(subsystem: "com.guoyuming.UsageBar", category: "DesktopAccount")
     nonisolated static func detectProfile(processList: String, desktopPIDs: Set<Int32>) -> String? {
+        detectBackend(processList: processList, desktopPIDs: desktopPIDs)?.profileID
+    }
+    nonisolated static func detectBackend(processList: String, desktopPIDs: Set<Int32>) -> DesktopBackend? {
         let rows = processList.split(separator: "\n").compactMap { line -> (Int32, Int32, String)? in
             let parts = line.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: { $0 == " " || $0 == "\t" })
             guard parts.count == 3, let pid = Int32(parts[0]), let parent = Int32(parts[1]) else { return nil }
@@ -191,73 +212,143 @@ final class DualClientController: ObservableObject {
             }
             return server.2.contains("sqlite_home=") && server.2.contains("cli_auth_credentials_store=") ? "secondary" : "primary"
         })
-        return identities.count == 1 ? identities.first : nil
+        guard identities.count == 1, let profileID = identities.first else { return nil }
+        return DesktopBackend(profileID: profileID, serverPIDs: Set(servers.map { $0.0 }))
     }
     nonisolated static func detectSecondary(processList: String, desktopPIDs: Set<Int32>) -> Bool? {
         detectProfile(processList: processList, desktopPIDs: desktopPIDs).map { $0 != "primary" }
     }
-    func detectRunningAccount() {
-        guard !isSwitching, !detecting, Date().timeIntervalSince(lastDetection) > 3 else { return }
-        guard let bundleID = Bundle(url: URL(fileURLWithPath: "/Applications/ChatGPT.app"))?.bundleIdentifier else { return }
-        let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
-        guard !pids.isEmpty else { markAccountUncertain("Desktop is not running"); return }
-        detecting = true; lastDetection = Date()
+    nonisolated static let desktopPath = "/Applications/ChatGPT.app"
+    private static func desktopPIDs(bundleID: String) -> Set<Int32> {
+        Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
+    }
+    nonisolated private static func readBackend(desktopPIDs: Set<Int32>) async -> DesktopBackend? {
+        await Task.detached(priority: .utility) {
+            let process = Process(); let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/bin/ps")
+            process.arguments = ["-ww", "-axo", "pid=,ppid=,command="]
+            process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
+            do { try process.run() } catch { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            return detectBackend(processList: String(decoding: data, as: UTF8.self), desktopPIDs: desktopPIDs)
+        }.value
+    }
+    func stopDesktopDetection() {
+        detectionGeneration += 1
+        detectionTask?.cancel(); detectionTask = nil
+        retryTask?.cancel(); retryTask = nil
+        detecting = false
+        lastDetection = .distantPast
+        clearConfirmedLogin()
+        detectionIssue = nil
+    }
+    func desktopProcessChanged() {
+        guard !isSwitching else { return }
+        stopDesktopDetection()
+        detectRunningAccount(force: true)
+    }
+    func detectRunningAccount(force: Bool = false) {
+        guard !isSwitching, !detecting, force || Date().timeIntervalSince(lastDetection) >= 2 else { return }
+        retryTask?.cancel(); retryTask = nil
+        if force { retriesRemaining = 3 }
+        lastDetection = Date()
+        guard let bundleID = Bundle(url: URL(fileURLWithPath: Self.desktopPath))?.bundleIdentifier else {
+            reportDetectionIssue(.desktopMissing); return
+        }
+        let pids = Self.desktopPIDs(bundleID: bundleID)
+        guard !pids.isEmpty else { reportDetectionIssue(.desktopClosed); return }
+        detecting = true
         let generation = detectionGeneration
-        Task {
-            defer { detecting = false }
-            let profileList = profiles?() ?? []
-            let result = await Task.detached { () -> String? in
-                let process = Process(); let pipe = Pipe()
-                process.executableURL = URL(fileURLWithPath: "/bin/ps")
-                process.arguments = ["-ww", "-axo", "pid=,ppid=,command="]
-                process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
-                do { try process.run() } catch { return nil }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-                guard process.terminationStatus == 0 else { return nil }
-                let list = String(decoding: data, as: UTF8.self)
-                return Self.detectProfile(processList: list, desktopPIDs: pids)
-            }.value
-            guard !isSwitching, generation == detectionGeneration else { return }
-            guard let result else { markAccountUncertain("Desktop backend could not be identified"); return }
-            let profile = profileList.first { $0.id == result }
-            guard result == "primary" || result == "secondary" || profile?.home != nil else {
-                markAccountUncertain("Desktop backend refers to an unknown login home"); return
-            }
-            let probeHome = profile?.home ?? (result == "secondary" ? AppState.secondAccountHome : nil)
-            let probe = CodexClient(codexHome: probeHome)
-            defer { Task { await probe.shutdown() } }
-            let scope: String?
-            do { scope = try await probe.readAccountScope(customPath: "/Applications/ChatGPT.app") }
-            catch { scope = nil }
-            guard !isSwitching, generation == detectionGeneration else { return }
-            let currentPIDs = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).map(\.processIdentifier))
-            guard currentPIDs == pids else { markAccountUncertain("Desktop restarted during login verification"); return }
-            guard let scope else { markAccountUncertain("Desktop backend account/read returned no verified identity"); return }
-            if profiles != nil {
-                guard confirmDesktopLogin(profileID: result, scope: scope) else {
-                    markAccountUncertain("Desktop identity did not match a verified profile"); return
+        detectionTask = Task {
+            defer {
+                if generation == detectionGeneration {
+                    detecting = false
+                    detectionTask = nil
                 }
+            }
+            let backend = await Self.readBackend(desktopPIDs: pids)
+            guard !isSwitching, generation == detectionGeneration else { return }
+            guard let backend, Self.desktopPIDs(bundleID: bundleID) == pids else {
+                reportDetectionIssue(.backendUnavailable, retry: true); return
+            }
+            if confirmedBackend != nil && confirmedBackend != backend { clearConfirmedLogin() }
+            let profile = profiles?().first { $0.id == backend.profileID }
+            let id = backend.profileID
+            guard profiles == nil || (profile != nil && (id == "primary" || id == "secondary" || profile?.home != nil)) else {
+                reportDetectionIssue(.unknownProfile); return
+            }
+            let probeHome = profile?.home ?? (id == "secondary" ? AppState.secondAccountHome : nil)
+            let probe = CodexClient(requestTimeout: 4, codexHome: probeHome)
+            defer { Task { await probe.shutdown() } }
+            let identity: Result<String?, Error>
+            do { identity = .success(try await probe.readAccountScope(customPath: Self.desktopPath)) }
+            catch { identity = .failure(error) }
+            let sameBackend = await Self.readBackend(desktopPIDs: pids) == backend
+            guard !isSwitching, generation == detectionGeneration else { return }
+            guard sameBackend, Self.desktopPIDs(bundleID: bundleID) == pids else {
+                reportDetectionIssue(.backendUnavailable, retry: true); return
+            }
+            let scope: String
+            switch identity {
+            case .success(let value?):
+                scope = value
+            case .success(nil), .failure(CodexFailure.authRequired):
+                reportDetectionIssue(.loginUnavailable, retry: true); return
+            case .failure:
+                reportDetectionIssue(.readFailed, backend: backend, retry: true); return
+            }
+            if profiles != nil {
+                guard profiles?().contains(where: { $0.id == id }) == true else {
+                    reportDetectionIssue(.unknownProfile); return
+                }
+                _ = confirmDesktopLogin(profileID: id, scope: scope, backend: backend)
                 return
             }
             let scopes = accountScopes?()
             guard let matched = Self.matchAccount(scope: scope, primary: scopes?.primary, secondary: scopes?.secondary) else {
-                markAccountUncertain("Desktop identity did not match a verified profile"); return
+                reportDetectionIssue(.unknownProfile); return
             }
             acceptDetectedAccount(matched)
         }
     }
-    private func markAccountUncertain(_ reason: String) {
-        Self.detectionLog.notice("\(reason, privacy: .public)")
+    private func clearConfirmedLogin() {
         activeScope = nil
-        detected = false
-        onAccountUncertain?()
+        confirmedBackend = nil
+        firstReadFailureAt = nil
+        if detected {
+            detected = false
+            onAccountUncertain?()
+        }
+    }
+    func reportDetectionIssue(_ issue: DetectionIssue, backend: DesktopBackend? = nil, retry: Bool = false) {
+        if detectionIssue != issue { Self.detectionLog.notice("Desktop account check: \(issue.rawValue, privacy: .public)") }
+        detectionIssue = issue
+        // An RPC failure on the same running backend can be transient. Keep the
+        // last live confirmation briefly, but never carry it across a restart.
+        let now = Date()
+        if issue == .readFailed && firstReadFailureAt == nil { firstReadFailureAt = now }
+        let keepConfirmation = issue == .readFailed && retry && retriesRemaining > 0 && backend != nil && backend == confirmedBackend
+            && firstReadFailureAt.map { now.timeIntervalSince($0) < 15 } == true
+        if !keepConfirmation { clearConfirmedLogin() }
+        retryTask?.cancel(); retryTask = nil
+        guard retry, retriesRemaining > 0 else { return }
+        retriesRemaining -= 1
+        retryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            self?.detectRunningAccount()
+        }
     }
     // The live identity is read from the home identified by the running backend.
     // Quota snapshots in other homes may be stale or contain the same login.
     @discardableResult
-    func confirmDesktopLogin(profileID: String, scope: String) -> Bool {
+    func confirmDesktopLogin(profileID: String, scope: String, backend: DesktopBackend? = nil) -> Bool {
         guard profiles?().contains(where: { $0.id == profileID }) == true else { return false }
         let changed = !detected || activeProfileID != profileID || activeScope != scope
+        confirmedBackend = backend
+        firstReadFailureAt = nil
+        detectionIssue = nil
+        retriesRemaining = 3
         activeScope = scope
         activeProfileID = profileID
         defaults.set(profileID, forKey: "execution-account.profile.v1")
@@ -292,6 +383,8 @@ final class DualClientController: ObservableObject {
     }
     func acceptDetectedAccount(_ result: Bool) {
         let changed = activeSecondary != result || !detected
+        detectionIssue = nil
+        retriesRemaining = 3
         detected = true; activeSecondary = result
         activeProfileID = result ? "secondary" : "primary"
         if changed {
@@ -311,7 +404,6 @@ final class DualClientController: ObservableObject {
         onRestartSucceeded?(secondary)
     }
     @Published private(set) var activeSecondary = false
-    func roleLabel(secondary: Bool) -> String { !detected ? "登录待确认" : (secondary == activeSecondary ? "主账号" : "备用账号") }
     var orderedSecondary: [Bool] { activeSecondary ? [true, false] : [false, true] }
     @Published var selectedSecondary = false
     @Published private(set) var isSwitching = false
@@ -323,10 +415,8 @@ final class DualClientController: ObservableObject {
     }
     func profileSignedOut(_ id: String) {
         if activeProfileID == id {
-            detectionGeneration += 1
-            activeScope = nil
-            detected = false
-            onAccountUncertain?()
+            stopDesktopDetection()
+            detectionIssue = .loginUnavailable
         }
     }
     func canSwitchToProfile(_ id: String) -> Bool {
@@ -348,10 +438,10 @@ final class DualClientController: ObservableObject {
         let profileID = profiles == nil ? (selectedSecondary ? "secondary" : "primary") : targetProfileID
         let useSecondary = profileID != "primary"
         let expectedScope = profiles?().first(where: { $0.id == profileID })?.scope
-        detectionGeneration += 1
+        retryTask?.cancel(); retryTask = nil
         isSwitching = true
         Task {
-            defer { isSwitching = false }
+            defer { isSwitching = false; desktopProcessChanged() }
             do {
                 let app = URL(fileURLWithPath: "/Applications/ChatGPT.app")
                 guard let bundle = Bundle(url: app), let bundleID = bundle.bundleIdentifier else { throw CodexFailure.missingCLI }

@@ -52,6 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.state.resume(); self?.state.appUpdates.checkIfDue() }
         })
+        for event in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            workspaceObservers.append(center.addObserver(forName: event, object: nil, queue: .main) { [weak self] note in
+                guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                    .bundleURL?.path == DualClientController.desktopPath else { return }
+                Task { @MainActor in
+                    guard let self, !self.state.paused else { return }
+                    self.state.dualClient.desktopProcessChanged()
+                }
+            })
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showPopover() }
     }
 
