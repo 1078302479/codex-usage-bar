@@ -239,10 +239,9 @@ private struct OrbitAccountOption: View {
                             HStack(alignment: .firstTextBaseline, spacing: 5) {
                                 Text(window.label).font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
                                 if let remaining = window.remaining {
-                                    let quotaColor = custom ?? Color(nsColor: PanelPalette.remainingQuotaColor(remaining))
                                     Text(QuotaPresentation.percent(remaining))
                                         .font(.system(size: 16, weight: .semibold)).monospacedDigit()
-                                        .foregroundStyle(quota.cached ? PanelPalette.secondary : quotaColor)
+                                        .foregroundStyle(quota.cached ? PanelPalette.secondary : custom ?? PanelPalette.primary)
                                 } else {
                                     Text("待核验").font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
                                 }
@@ -348,13 +347,21 @@ private struct OrbitCompactGauge: View {
                     Capsule().fill(accent).frame(width: proxy.size.width * CGFloat(min(100, max(0, remaining ?? 0))) / 100)
                 }
             }.frame(height: 5)
-            Text(resetLabel).font(.system(size: 10))
-                .foregroundStyle(PanelPalette.secondary).fixedSize(horizontal: false, vertical: true)
-            if let countdown {
-                Text(countdown).font(.system(size: 10, weight: .medium)).monospacedDigit()
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(PanelPalette.surface, in: Capsule())
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(resetLabel)
+                    .foregroundStyle(PanelPalette.secondary)
+                    .lineLimit(countdown == nil ? nil : 1)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let countdown {
+                    Spacer(minLength: 0)
+                    Text(countdown).fontWeight(.medium)
+                        .fixedSize()
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(PanelPalette.surface, in: Capsule())
+                }
             }
+            .font(.system(size: 10)).monospacedDigit()
         }.frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel([window?.label ?? fallback, "\(state.isStale ? "上次" : "")剩余 \(amount)", resetLabel, countdown].compactMap { $0 }.joined(separator: "，"))

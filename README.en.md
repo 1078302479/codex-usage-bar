@@ -77,7 +77,7 @@ This is an independent community project, not an official OpenAI application or 
 - Online update checks at startup and at most once every 24 hours, with a new-release entry in the popup and manual checks in settings. Review release notes, download and verify the matching archive, then explicitly install and restart.
 
 - Remaining allowances, reset times in Beijing time, and countdowns for independent quota windows. Actual window durations come from the service.
-- The menu bar and account picker share red, amber, and green defaults. Short- and long-term percentage colors can be customized independently in both horizontal and stacked layouts.
+- The menu bar uses red, amber, and green defaults. The account picker uses the standard text color by default and can follow custom percentage rules.
 - Horizontal quota bars, a compact account and subscription header, and light and dark activity views.
 - Configurable menu bar metrics, provider icon, labels, plan name, and separators.
 - Stacked mode: weekly allowance above the 5-hour allowance, or a regular single-line layout.
