@@ -200,6 +200,14 @@ enum QuotaPresentation {
         f.dateFormat = calendar.isDate(date, inSameDayAs: now) ? "'今天' HH:mm" : "MM-dd HH:mm"
         return f.string(from: date) + " 重置"
     }
+    static func resetCountdown(_ window: QuotaWindow?, now: Date) -> String? {
+        guard let interval = window?.resetDate?.timeIntervalSince(now), interval.isFinite, interval > 0 else { return nil }
+        let minutes = Int(ceil(interval / 60))
+        let hours = minutes / 60
+        if hours >= 24 { return "剩 \(hours / 24)d \(hours % 24)h" }
+        if hours > 0 { return "剩 \(hours)h \(minutes % 60)m" }
+        return "剩 \(minutes)m"
+    }
     static func selectedBucket(_ snapshot: QuotaSnapshot?, preferences: Preferences) -> QuotaBucket? {
         snapshot?.buckets.first { $0.id == preferences.selectedBucket } ?? snapshot?.buckets.first { $0.id == "codex" } ?? snapshot?.buckets.first
     }

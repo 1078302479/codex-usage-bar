@@ -48,9 +48,8 @@ struct TokenActivityView: View {
             }
             if let error = state.activityError { Text(error).font(.system(size: 10)).foregroundStyle(PanelPalette.warning) }
         }
-        .padding(.top, 12)
-
-        .padding(.horizontal, OrbitLayout.inset).padding(.bottom, 10)
+        .padding(13)
+        .orbitCard()
     }
     private func compact(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -58,7 +57,7 @@ struct TokenActivityView: View {
             Text(value).font(.system(size: 19, weight: .medium)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.75)
         }.frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12).background(PanelPalette.background, in: RoundedRectangle(cornerRadius: 10))
+        .padding(12).background(PanelPalette.surface, in: RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(PanelPalette.border) }
         .accessibilityElement(children: .combine)
     }

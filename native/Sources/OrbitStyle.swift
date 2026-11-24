@@ -16,8 +16,35 @@ extension EnvironmentValues {
     }
 }
 
+extension View {
+    func orbitCard(cornerRadius: CGFloat = 12) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        return background {
+            shape.fill(PanelPalette.background)
+                .shadow(color: .black.opacity(0.06), radius: 2, y: 1)
+        }
+        .overlay { shape.strokeBorder(PanelPalette.border).allowsHitTesting(false) }
+    }
+}
+
+struct OrbitPlanBadge: View {
+    let plan: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let free = plan.lowercased() == "free"
+        let dark = colorScheme == .dark
+        Text(plan.capitalized)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(free ? PanelPalette.secondary : dark ? Color(red: 0.79, green: 0.68, blue: 1) : Color(red: 0.47, green: 0.25, blue: 0.84))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(free ? PanelPalette.surface : dark ? Color(red: 0.28, green: 0.21, blue: 0.39) : Color(red: 0.92, green: 0.88, blue: 1), in: Capsule())
+    }
+}
+
 struct OrbitActionStyle: ButtonStyle {
     var prominent = false
+    @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .medium))
@@ -25,7 +52,7 @@ struct OrbitActionStyle: ButtonStyle {
             .foregroundStyle(prominent ? PanelPalette.background : PanelPalette.primary)
             .background(prominent ? PanelPalette.primary : PanelPalette.background, in: RoundedRectangle(cornerRadius: 7))
             .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(prominent ? Color.clear : PanelPalette.border, lineWidth: 1) }
-            .opacity(configuration.isPressed ? 0.7 : 1)
+            .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.45)
     }
 }
 

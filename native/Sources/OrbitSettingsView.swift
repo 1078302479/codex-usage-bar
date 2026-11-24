@@ -98,37 +98,26 @@ struct UsageSettingsView: View {
         }
     }
     private var accountsPage: some View {
-        Form {
-                Section("多账号管理") {
-                    DualClientPanelView(controller: state.dualClient)
-                    Button("添加账号") { state.addAccount() }.buttonStyle(OrbitActionStyle(prominent: true))
-                    ForEach(state.orderedAccounts, id: \.id) { entry in
-                        let duplicate = state.duplicateAccountIDs.contains(entry.id)
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(state.accountRole(entry.id)).font(.headline)
-                                Spacer()
-                                if state.deletingAccountID == entry.id {
-                                    ProgressView().controlSize(.small)
-                                    Text("正在删除…").font(.caption).foregroundStyle(.secondary)
-                                }
-                                if entry.id != state.dualClient.activeProfileID && !duplicate {
-                                    OrbitSwitchButton(owner: state, account: entry.state, controller: state.dualClient, profileID: entry.id)
-
-                                    Button(role: .destructive) { state.requestAccountDeletion(entry.id) } label: {
-                                        Label("删除账号", systemImage: "trash")
-                                    }.buttonStyle(.borderless).foregroundStyle(Color.red)
-                                        .disabled(!state.canDeleteAccount(entry.id))
-                                }
-                            }
-                            SecondaryAccountSettingsView(state: entry.state, duplicate: duplicate,
-                                                         canReplaceDuplicate: state.dualClient.detected && !state.dualClient.isSwitching)
-                        }
-                    }
-                    Text("当前客户端登录用户为主账号，其余为备用账号。所有账号共用本地工作空间，登录凭证独立。")
-                        .font(.caption).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("多账号管理").font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Button { state.addAccount() } label: { Label("添加账号", systemImage: "plus") }
+                        .buttonStyle(OrbitActionStyle(prominent: true))
                 }
-        }.formStyle(.grouped).disabled(preview)
+                Text("各账号共用本地工作空间，登录凭证独立。登录时请在官方网页选择要添加的用户。")
+                    .font(.caption).foregroundStyle(PanelPalette.secondary)
+                DualClientPanelView(controller: state.dualClient)
+                if let message = state.accountManagementMessage {
+                    Label(message, systemImage: "exclamationmark.circle")
+                        .font(.caption).foregroundStyle(PanelPalette.warning)
+                }
+                ForEach(state.orderedAccounts, id: \.id) { entry in
+                    AccountSettingsCard(owner: state, account: entry.state, controller: state.dualClient, profileID: entry.id)
+                }
+            }.padding(.horizontal, 30).padding(.vertical, 12)
+        }.background(PanelPalette.panelBackdrop).disabled(preview)
     }
     private var menuPage: some View {
         Form {

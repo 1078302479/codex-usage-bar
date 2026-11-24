@@ -36,19 +36,20 @@ struct QuotaPanelView: View {
             OrbitMark()
             Text("CodexUsageBar").font(.system(size: 13, weight: .medium))
             Spacer()
-            Label("实时监测", systemImage: "circle.fill").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
+            PanelMonitorStatus(account: state.displayedAccount)
             if state.isRefreshing { ProgressView().controlSize(.small) }
             Button { state.refreshAllAccounts() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.plain).foregroundStyle(PanelPalette.secondary).disabled(state.isRefreshing)
                 .help("核验所有账号额度").accessibilityLabel("核验所有账号额度")
 
 
-        }.padding(.horizontal, OrbitLayout.inset).padding(.top, 15).padding(.bottom, 12)
+        }.padding(.horizontal, OrbitLayout.inset).padding(.vertical, 10)
     }
 
     private var panelScroll: some View {
         ScrollView(.vertical) { panelContent }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(PanelPalette.panelBackdrop)
     }
 
     private var panelContent: some View {
@@ -88,6 +89,27 @@ struct QuotaPanelView: View {
                 .onEnded { _ in state.panelDragStart = nil })
     }
 
+}
+
+private struct PanelMonitorStatus: View {
+    @ObservedObject var account: AppState
+
+    var body: some View {
+        let status = account.updateStatus
+        HStack(spacing: 5) {
+            Circle()
+                .fill(status == .verified ? PanelPalette.success : status.isWarning ? PanelPalette.warning : PanelPalette.secondary)
+                .frame(width: 5, height: 5)
+            Text(status == .verified ? "实时监测" : status.title)
+                .font(.system(size: 10))
+                .foregroundStyle(PanelPalette.secondary)
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(PanelPalette.surface, in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("额度监测，" + status.title)
+        .help(account.statusDetail)
+    }
 }
 
 private struct PanelContentHeightKey: PreferenceKey {

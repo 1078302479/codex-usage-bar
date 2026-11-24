@@ -5,14 +5,24 @@ struct ResetCreditSectionView: View {
     @ObservedObject var state: AppState
     let openSettings: () -> Void
     var allowsReminders = true
-    var initiallyExpanded = false
-    private var summary: ResetCreditSummary? { state.verified ? state.snapshot?.resetCredits : nil }
-    private var earliest: Date? { summary?.availableDetails.compactMap(\.expiryDate).filter { $0 > state.now }.min() }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+        let summary = state.verified ? state.snapshot?.resetCredits : nil
+        let details = summary?.availableDetails ?? []
+        let earliest = details.compactMap(\.expiryDate).first { $0 > state.now }
+        let expiresToday = earliest.map { $0.timeIntervalSince(state.now) <= 86400 } ?? false
+        let expiring = summary?.expiringWithinThreeDays(now: state.now)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
                 Text("重置卡").font(.system(size: 12, weight: .semibold))
+                if let expiring, expiring.count > 0 {
+                    Text(expiresToday ? "24 小时内到期" : expiringCaption(expiring))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(PanelPalette.warning)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(PanelPalette.warning.opacity(0.12), in: Capsule())
+                        .help(expiringCaption(expiring))
+                }
                 Spacer()
                 Button { state.settingsTab = .reminders; openSettings() } label: { Label("提醒设置", systemImage: "bell") }
                     .buttonStyle(OrbitActionStyle())
@@ -21,29 +31,29 @@ struct ResetCreditSectionView: View {
             if let summary {
                 if let expiry = earliest {
                     HStack {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("最近一张将在").font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
-                            Text(ResetCreditSummary.compactRemainingLabel(until: expiry, now: state.now))
-                                .font(.system(size: 24, weight: .medium)).monospacedDigit().tracking(-0.8)
-                                .foregroundStyle(expiry.timeIntervalSince(state.now) <= 86400 ? PanelPalette.warning : PanelPalette.primary)
-                            Text("后到期 · " + ResetCreditSummary.expiryLabel(expiry))
-                                .font(.system(size: 9)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(ResetCreditSummary.compactRemainingLabel(until: expiry, now: state.now) + "后到期")
+                                .font(.system(size: 16, weight: .medium)).monospacedDigit()
+                                .foregroundStyle(expiresToday ? PanelPalette.warning : PanelPalette.primary)
+                            Text("最近到期 · " + ResetCreditSummary.expiryLabel(expiry))
+                                .font(.system(size: 10)).monospacedDigit().foregroundStyle(PanelPalette.secondary)
                         }
                         Spacer(minLength: 10)
-                        VStack(spacing: 2) {
-                            Text(summary.availableCount.map(String.init) ?? "--").font(.system(size: 25, weight: .medium)).monospacedDigit()
-                            Text(summary.availableCount == nil ? "数量待确认" : "张可用").font(.system(size: 8)).foregroundStyle(PanelPalette.secondary)
-                        }.frame(width: 52, height: 52).background(PanelPalette.background, in: Circle())
-                            .overlay { Circle().strokeBorder(PanelPalette.border) }
-                    }
+                        Text(summary.availableCount.map { "\($0) 张可用" } ?? "数量待确认")
+                            .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                    }.padding(.horizontal, 9).padding(.vertical, 7)
+                        .background(PanelPalette.surface, in: RoundedRectangle(cornerRadius: 8))
                 } else {
                     Text(summary.availableCount == 0 ? "当前没有可用重置卡。" : "可用 \(summary.availableCount.map(String.init) ?? "待确认") 张 · 到期时间待核验")
                         .font(.system(size: 12, weight: .medium))
                 }
-                if !summary.availableDetails.isEmpty {
-                    timeline(Array(summary.availableDetails.prefix(3)))
+                if !details.isEmpty {
+                    timeline(Array(details.prefix(3)))
                     HStack {
-                        Text(expiringCaption(summary)).font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
+                        if let expiring {
+                            Text(expiring.count > 0 && expiring.complete ? "北京时间" : expiringCaption(expiring))
+                                .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
+                        }
                         Spacer()
                         Button { state.resetCreditsExpanded.toggle() } label: {
                             Label(state.resetCreditsExpanded ? "收起明细" : "卡片明细", systemImage: state.resetCreditsExpanded ? "chevron.up" : "chevron.down")
@@ -51,14 +61,14 @@ struct ResetCreditSectionView: View {
                     }
                     if state.resetCreditsExpanded {
                         VStack(spacing: 0) {
-                            ForEach(Array(summary.availableDetails.enumerated()), id: \.element.id) { index, card in
+                            ForEach(Array(details.enumerated()), id: \.element.id) { index, card in
                                 if index > 0 { Divider() }
                                 detail(card, index: index)
                             }
                         }
                     }
                 }
-                if summary.credits == nil || (summary.availableCount ?? 0) > summary.availableDetails.count {
+                if summary.credits == nil || (summary.availableCount ?? 0) > details.count {
                     Text("部分卡片明细未返回；只展示已知日期，不推算到期时间。")
                         .font(.system(size: 10)).foregroundStyle(PanelPalette.secondary)
                 }
@@ -68,20 +78,18 @@ struct ResetCreditSectionView: View {
                     .font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
             }
         }
-        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .background(PanelPalette.background, in: RoundedRectangle(cornerRadius: 14))
-        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(PanelPalette.border) }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .orbitCard()
         .padding(.horizontal, OrbitLayout.inset)
     }
-    private func expiringCaption(_ summary: ResetCreditSummary) -> String {
-        let result = summary.expiringWithinThreeDays(now: state.now)
+    private func expiringCaption(_ result: (count: Int, complete: Bool)) -> String {
         if result.complete { return result.count == 0 ? "未来 72 小时内无到期卡片" : "3 天内 \(result.count) 张到期" }
         return result.count == 0 ? "未来 72 小时到期情况待确认" : "已知 3 天内 \(result.count) 张到期"
     }
     private func timeline(_ cards: [ResetCredit]) -> some View {
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     ZStack(alignment: .leading) {
                         Rectangle().fill(PanelPalette.border).frame(height: 1)
                         Circle().fill(index == 0 ? PanelPalette.shortRing : PanelPalette.surface)
@@ -94,7 +102,7 @@ struct ResetCreditSectionView: View {
                         .font(.system(size: 9)).foregroundStyle(PanelPalette.secondary).lineLimit(2)
                 }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
             }
-        }.padding(.top, 5).help("仅展示最近三张已知卡片，完整日期见卡片明细；时间为北京时间")
+        }.help("仅展示最近三张已知卡片，完整日期见卡片明细；时间为北京时间")
     }
     private func detail(_ card: ResetCredit, index: Int) -> some View {
         HStack {

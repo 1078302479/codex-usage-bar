@@ -1,5 +1,6 @@
 import AppKit
 let output = CommandLine.arguments[1]
+let version = CommandLine.arguments[2]
 let bitmap = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:720,pixelsHigh:460,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
 NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep:bitmap)
 let scale = NSAffineTransform(); scale.scale(by:1); scale.concat()
@@ -16,7 +17,7 @@ arrow.lineWidth=4; arrow.lineCapStyle = .round; arrow.lineJoinStyle = .round
 NSColor(srgbRed:0.27,green:0.48,blue:0.77,alpha:1).setStroke(); arrow.stroke()
 NSColor(srgbRed:0.85,green:0.89,blue:0.94,alpha:1).setFill(); NSRect(x:48,y:95,width:624,height:1).fill()
 text("拖动完成后，可以推出此安装磁盘。",x:48,y:65,size:12,weight:.regular,color:ink.withAlphaComponent(0.65))
-text("CodexUsageBar 0.1.17    ·    Apple Silicon    ·    macOS 14 或更高版本",x:48,y:35,size:10,weight:.regular,color:ink.withAlphaComponent(0.45))
+text("CodexUsageBar \(version)    ·    Apple Silicon    ·    macOS 14 或更高版本",x:48,y:35,size:10,weight:.regular,color:ink.withAlphaComponent(0.45))
 NSGraphicsContext.restoreGraphicsState()
 let png = bitmap.representation(using:.png,properties:[:])!
 try png.write(to:URL(fileURLWithPath:output))

@@ -12,6 +12,8 @@ enum PanelPalette {
     }
     static var accountAccent: Color { longRing }
     static var background: Color { adaptive(NSColor(srgbRed: 0.165, green: 0.169, blue: 0.192, alpha: 1), light: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)) }
+    static var panelBackdrop: Color { adaptive(NSColor(srgbRed: 0.115, green: 0.118, blue: 0.137, alpha: 1), light: NSColor(srgbRed: 0.951, green: 0.956, blue: 0.971, alpha: 1)) }
+    static var success: Color { Color(nsColor: highQuotaColor) }
     static var primary: Color { adaptive(NSColor(srgbRed: 0.933, green: 0.929, blue: 0.949, alpha: 1), light: NSColor(srgbRed: 0.161, green: 0.169, blue: 0.188, alpha: 1)) }
     static var secondary: Color { adaptive(NSColor(srgbRed: 0.65, green: 0.64, blue: 0.70, alpha: 1), light: NSColor(srgbRed: 0.49, green: 0.49, blue: 0.54, alpha: 1)) }
     static var link: Color { primary }

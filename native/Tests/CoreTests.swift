@@ -96,6 +96,11 @@ import Foundation
         check(QuotaPresentation.menuTitle(snapshot: snapshot, preferences: p, verified: true, now: now.addingTimeInterval(301)) == "5h 84%* | 7d 97%*", "stale values are marked")
         let expired = QuotaWindow(usedPercent: 100, windowDurationMins: 300, resetsAt: now.timeIntervalSince1970)
         check(QuotaPresentation.value(expired, verified: true, now: now) == "--", "reset boundary does not fabricate 100 percent")
+        check(QuotaPresentation.resetCountdown(short, now: now.addingTimeInterval(-15 * 60)) == "剩 1h 15m", "short reset countdown shows hours and minutes")
+        check(QuotaPresentation.resetCountdown(long, now: now.addingTimeInterval(-3600)) == "剩 1d 1h", "long reset countdown shows days and hours")
+        check(QuotaPresentation.resetCountdown(short, now: now.addingTimeInterval(3599)) == "剩 1m", "last second does not show zero minutes")
+        check(QuotaPresentation.resetCountdown(expired, now: now) == nil &&
+              QuotaPresentation.resetCountdown(nil, now: now) == nil, "elapsed and missing resets have no countdown")
         check(QuotaPresentation.value(short, verified: true, now: now) == "84%", "remaining subtracts used")
         check(QuotaWindow(usedPercent: 0, windowDurationMins: 300, resetsAt: nil).remaining == 100, "zero usage is a valid full allowance")
         check(QuotaWindow(usedPercent: nil, windowDurationMins: 300, resetsAt: nil).remaining == nil, "unknown is not zero")

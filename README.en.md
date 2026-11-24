@@ -8,6 +8,14 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.19 · Quota panel and account management
+
+- Start switching from an alternate account's card, then confirm the client restart.
+- See reset times alongside countdowns and spot expiring reset credits next to the section title.
+- A more compact light and dark panel, a one-line Token summary, and per-account quota and credit counts in Settings.
+
+[Release notes](docs/releases/v0.1.19.md)
+
 ## v0.1.17 · Active account verification recovery
 
 - Fixes a wait for an exited verification process that could block refreshes. Rechecks the active account after startup, wake, or a Codex restart and retries temporary read failures.
@@ -64,13 +72,13 @@ This is an independent community project, not an official OpenAI application or 
 
 ## Features
 
-- Monitor two accounts concurrently; selecting a row updates the menu bar, reset credits and Token activity.
-- One-click alternate-account switching with a client restart, preserving the workspace and conversation list. The active account is listed first; disabling secondary monitoring hides switching.
+- Compare quotas in the account picker and browse each account's quota, reset credits and Token activity. The menu bar follows the signed-in account. Account cards in Settings summarize remaining quota and reset credits.
+- Start switching from an alternate account's card and confirm the client restart. Accounts share the local workspace and conversation list.
 - Online update checks at startup and at most once every 24 hours, with a new-release entry in the popup and manual checks in settings. Review release notes, download and verify the matching archive, then explicitly install and restart.
 
-- Remaining allowance and reset times for independent short-term and weekly windows; actual durations come from the service.
+- Remaining allowances, reset times in Beijing time, and countdowns for independent quota windows. Actual window durations come from the service.
 - The menu bar and account picker share red, amber, and green defaults. Short- and long-term percentage colors can be customized independently in both horizontal and stacked layouts.
-- Circular quota gauges, a compact account/subscription header and refreshed light/dark activity views.
+- Horizontal quota bars, a compact account and subscription header, and light and dark activity views.
 - Configurable menu bar metrics, provider icon, labels, plan name, and separators.
 - Stacked mode: weekly allowance above the 5-hour allowance, or a regular single-line layout.
 - Compact resets: `HH:mm` for the short window and `MM-dd` for the long window, with independently optional descriptions.
