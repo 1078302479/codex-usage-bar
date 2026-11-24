@@ -31,13 +31,30 @@ struct OrbitActionStyle: ButtonStyle {
 
 struct OrbitMark: View {
     var size: CGFloat = 26
+    private static let appIcon: NSImage? = {
+        let bundle = Bundle.main
+        guard let name = bundle.object(forInfoDictionaryKey: "CFBundleIconFile") as? String else { return nil }
+        let file = (name as NSString).pathExtension.isEmpty ? name + ".icns" : name
+        return bundle.url(forResource: file, withExtension: nil).flatMap { NSImage(contentsOf: $0) }
+    }()
+
     var body: some View {
-        HStack(spacing: 0) {
-            Text("›").font(.system(size: size * 0.8, weight: .medium))
-            Text("_").font(.system(size: size * 0.52, weight: .medium)).foregroundStyle(PanelPalette.shortRing)
+        Group {
+            if let appIcon = Self.appIcon {
+                Image(nsImage: appIcon)
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(1.14)
+                    .frame(width: size, height: size)
+            } else {
+                HStack(spacing: 0) {
+                    Text("›").font(.system(size: size * 0.8, weight: .medium))
+                    Text("_").font(.system(size: size * 0.52, weight: .medium)).foregroundStyle(PanelPalette.shortRing)
+                }
+                .foregroundStyle(PanelPalette.background).frame(width: size, height: size)
+                .background(PanelPalette.primary, in: RoundedRectangle(cornerRadius: size * 0.3))
+            }
         }
-        .foregroundStyle(PanelPalette.background).frame(width: size, height: size)
-        .background(PanelPalette.primary, in: RoundedRectangle(cornerRadius: size * 0.3))
         .accessibilityHidden(true)
     }
 }

@@ -10,7 +10,9 @@ xcrun swiftc -swift-version 6 -parse-as-library -O \
   -target "$ARCH-apple-macosx14.0" -sdk "$SDK" -module-cache-path "$CACHE" \
   "$ROOT"/native/Sources/*.swift -o "$APP/Contents/MacOS/CodexUsageBar"
 xcrun swift -module-cache-path "$CACHE" "$ROOT/native/Tools/MakeIcon.swift" "$ROOT/.build/CodexUsageBar.iconset" "$ROOT/native/Resources/CodexUsageBarAppIcon.png"
-iconutil -c icns "$ROOT/.build/CodexUsageBar.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
+iconutil -c icns "$ROOT/.build/CodexUsageBar.iconset" -o "$APP/Contents/Resources/UsageBarGauge.icns"
+# The updater in existing releases requires this resource path.
+cp "$APP/Contents/Resources/UsageBarGauge.icns" "$APP/Contents/Resources/AppIcon.icns"
 rm -f "$APP/Contents/Resources/CodexServiceIcon.png"
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
@@ -22,9 +24,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>CodexUsageBar</string>
 <key>CFBundleDisplayName</key><string>CodexUsageBar</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.17</string>
-<key>CFBundleVersion</key><string>22</string>
-<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleShortVersionString</key><string>0.1.18</string>
+<key>CFBundleVersion</key><string>23</string>
+<key>CFBundleIconFile</key><string>UsageBarGauge.icns</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
