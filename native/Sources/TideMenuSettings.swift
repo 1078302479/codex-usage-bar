@@ -205,8 +205,9 @@ struct TideMenuSettings: View {
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onChanged { drag in
                 guard width > 0 else { return }
                 let position = drag.location.x - drag.startLocation.x
+                let percentDelta = Double(position / width) * 100
                 if interaction.thresholdStart == nil { interaction.thresholdStart = value }
-                change(((interaction.thresholdStart ?? value) + position / width * 100).rounded())
+                change(((interaction.thresholdStart ?? value) + percentDelta).rounded())
             }.onEnded { _ in interaction.thresholdStart = nil })
             .accessibilityLabel(label).accessibilityValue("\(Int(value))%")
             .accessibilityAdjustableAction { direction in
