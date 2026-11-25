@@ -157,11 +157,11 @@ private struct TideProjectionChart: View {
             }
             let total = max(1, projection.reset.timeIntervalSince(first.date))
             let observed = last.date.timeIntervalSince(first.date)
-            let middle = width * (observed / total)
+            let middle = width * CGFloat(observed / total)
             let range = max(12, first.remaining)
-            func height(_ remaining: Double) -> CGFloat { 6 + (floor - 6) * (first.remaining - remaining) / range }
+            func height(_ remaining: Double) -> CGFloat { 6 + (floor - 6) * CGFloat((first.remaining - remaining) / range) }
             let points = projection.samples.map { sample in
-                CGPoint(x: middle * sample.date.timeIntervalSince(first.date) / observed, y: min(floor, height(sample.remaining)))
+                CGPoint(x: middle * CGFloat(sample.date.timeIntervalSince(first.date) / observed), y: min(floor, height(sample.remaining)))
             }
             guard let start = points.first, let current = points.last else { return }
             let color = projection.exhaustion == nil ? TidePalette.coral : TidePalette.red
@@ -172,7 +172,10 @@ private struct TideProjectionChart: View {
                                                       startPoint: start, endPoint: CGPoint(x: 0, y: floor)))
             context.stroke(line, with: .color(color), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
             let timeAfterCurrent = projection.reset.timeIntervalSince(last.date)
-            let x = projection.exhaustion.map { middle + (width - middle) * min(1, max(0, $0.timeIntervalSince(last.date) / timeAfterCurrent)) } ?? width
+            let x = projection.exhaustion.map { date -> CGFloat in
+                let fraction = date.timeIntervalSince(last.date) / timeAfterCurrent
+                return middle + (width - middle) * CGFloat(min(1, max(0, fraction)))
+            } ?? width
             let end = CGPoint(x: x, y: min(floor, height(projection.remainingAtReset)))
             context.stroke(Path { $0.move(to: current); $0.addLine(to: end) }, with: .color(color),
                            style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [3, 4]))
