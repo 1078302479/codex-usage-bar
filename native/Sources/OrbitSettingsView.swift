@@ -4,11 +4,11 @@ import AppKit
 extension SettingsTab {
     var title: String {
         switch self {
-        case .accounts: return "账号管理"
-        case .menuBar: return "菜单栏显示"
-        case .appearance: return "外观与通用"
+        case .accounts: return "账号"
+        case .menuBar: return "菜单栏"
+        case .appearance: return "外观"
         case .connection: return "连接与更新"
-        case .reminders: return "通知提醒"
+        case .reminders: return "通知"
         case .about: return "关于"
         }
     }
@@ -24,8 +24,8 @@ extension SettingsTab {
     }
     var subtitle: String {
         switch self {
-        case .accounts: return "额度查看与客户端换号，各自独立。"
-        case .menuBar: return "在菜单栏留下你最需要的信息。"
+        case .accounts: return "查看额度和切换登录是两件事，互不影响。"
+        case .menuBar: return "修改即时生效，上方预览会跟着更新。"
         case .appearance: return "让界面与你的工作环境保持一致。"
         case .connection: return "管理客户端连接、额度核验与应用版本。"
         case .reminders: return "跟随客户端当前登录账号。"
@@ -37,45 +37,51 @@ extension SettingsTab {
 @MainActor
 struct UsageSettingsView: View {
     @ObservedObject var state: AppState
+    var size = OrbitLayout.settingsSize
     @Environment(\.orbitPreview) private var preview
+    private var compactWidth: Bool { size.width < 720 }
     private func bind<T>(_ key: WritableKeyPath<Preferences, T>) -> Binding<T> {
         Binding(get: { state.preferences[keyPath: key] }, set: { state.preferences[keyPath: key] = $0 })
     }
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 8) { OrbitMark(); VStack(alignment: .leading, spacing: 2) {
-                    Text("CodexUsageBar").font(.system(size: 12, weight: .semibold))
-                    Text("偏好设置").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-                } }.padding(.horizontal, 8).padding(.bottom, 5)
-                VStack(spacing: 4) {
-                    ForEach(SettingsTab.allCases, id: \.self) { tab in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach([SettingsTab.accounts, .menuBar, .reminders, .appearance, .connection, .about], id: \.self) { tab in
                         Button { state.settingsTab = tab } label: {
-                            Label(tab.title, systemImage: tab.symbol).font(.system(size: 12))
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 10)
-                                .foregroundStyle(state.settingsTab == tab ? PanelPalette.primary : PanelPalette.secondary)
-                                .background(state.settingsTab == tab ? PanelPalette.background : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                                .overlay(alignment: .leading) { if state.settingsTab == tab { Capsule().fill(PanelPalette.shortRing).frame(width: 3, height: 16) } }
+                            HStack(spacing: 10) {
+                                Image(systemName: tab.symbol).font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.white).frame(width: 22, height: 22)
+                                    .background(navColor(tab), in: RoundedRectangle(cornerRadius: 6))
+                                Text(tab.title).font(.system(size: 13, weight: state.settingsTab == tab ? .semibold : .regular))
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(state.settingsTab == tab ? TidePalette.card : Color.clear, in: RoundedRectangle(cornerRadius: 9))
                         }.buttonStyle(.plain).accessibilityAddTraits(state.settingsTab == tab ? .isSelected : [])
                     }
+                    Spacer()
+                    Text(state.appUpdates.currentVersion + " · Tide")
+                        .font(.system(size: 11)).foregroundStyle(TidePalette.tertiary)
+                        .padding(10)
                 }
-                Spacer()
-                Text("设置偏好自动保存").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary).padding(.horizontal, 8)
-            }.padding(.horizontal, 13).padding(.vertical, 24).frame(width: 190).background(PanelPalette.surface)
+                .padding(.horizontal, 10).padding(.top, 37).padding(.bottom, 14)
+                .frame(minHeight: size.height)
+            }
+            .frame(width: compactWidth ? 155 : 210).background(TidePalette.sidebar)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(state.settingsTab.title).font(.system(size: 22, weight: .semibold)).tracking(-0.5)
-                        Text(state.settingsTab.subtitle).font(.system(size: 11)).foregroundStyle(PanelPalette.secondary)
+                        Text(state.settingsTab.subtitle).font(.system(size: 12.5)).foregroundStyle(TidePalette.tertiary)
                     }
                     Spacer()
-                    Label("更改即时生效", systemImage: "circle.fill").font(.system(size: 9)).foregroundStyle(PanelPalette.secondary)
-                }.padding(.horizontal, 30).padding(.top, 28).padding(.bottom, 12)
+                }.padding(.horizontal, compactWidth ? 18 : 30).padding(.top, 28).padding(.bottom, 12)
                 settingsContent.id(state.settingsTab)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(PanelPalette.background)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(TidePalette.card)
         }
-        .foregroundStyle(PanelPalette.primary).tint(PanelPalette.primary)
-        .frame(width: 900, height: 720)
+        .foregroundStyle(TidePalette.ink).tint(TidePalette.indigo)
+        .frame(width: size.width, height: size.height)
         .onAppear { state.cliDraft = state.preferences.cliPath }
         .alert("删除账号？", isPresented: Binding(get: { state.pendingAccountDeletion != nil }, set: { if !$0 { state.cancelAccountDeletion() } })) {
             Button("取消", role: .cancel) { state.cancelAccountDeletion() }
@@ -97,87 +103,48 @@ struct UsageSettingsView: View {
         case .about: aboutPage
         }
     }
+    private func navColor(_ tab: SettingsTab) -> Color {
+        switch tab {
+        case .accounts: TidePalette.indigo
+        case .menuBar: TidePalette.coral
+        case .reminders: TidePalette.red
+        case .appearance: TidePalette.color(0x3A3D45)
+        case .connection: TidePalette.green
+        case .about: TidePalette.color(0x9A9CA3)
+        }
+    }
+
     private var accountsPage: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("多账号管理").font(.system(size: 12, weight: .semibold))
-                    Spacer()
-                    Button { state.addAccount() } label: { Label("添加账号", systemImage: "plus") }
-                        .buttonStyle(OrbitActionStyle(prominent: true))
-                }
-                Text("各账号共用本地工作空间，登录凭证独立。登录时请在官方网页选择要添加的用户。")
-                    .font(.caption).foregroundStyle(PanelPalette.secondary)
-                DualClientPanelView(controller: state.dualClient)
+            VStack(alignment: .leading, spacing: 12) {
+                let verifiedCounts = state.homeAccounts.compactMap { $0.state.verified ? $0.state.snapshot?.resetCredits?.availableCount : nil }
+                Text("\(state.homeAccounts.count) 个账号" + (verifiedCounts.count == state.homeAccounts.count ? " · 共 \(verifiedCounts.reduce(0, +)) 张重置卡" : ""))
+                    .font(.system(size: 11, weight: .bold)).tracking(0.8).foregroundStyle(TidePalette.tertiary)
+                if DualClientPanelView.isVisible(state.dualClient) { DualClientPanelView(controller: state.dualClient) }
                 if let message = state.accountManagementMessage {
-                    Label(message, systemImage: "exclamationmark.circle")
-                        .font(.caption).foregroundStyle(PanelPalette.warning)
+                    Label(message, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(TidePalette.red)
                 }
-                ForEach(state.orderedAccounts, id: \.id) { entry in
-                    AccountSettingsCard(owner: state, account: entry.state, controller: state.dualClient, profileID: entry.id)
-                }
-            }.padding(.horizontal, 30).padding(.vertical, 12)
-        }.background(PanelPalette.panelBackdrop).disabled(preview)
-    }
-    private var menuPage: some View {
-        Form {
-                Section("实时预览") {
-                    HStack(spacing: 6) {
-                        if state.preferences.isStacked {
-                            Image(nsImage: MenuBarRenderer.stackedImage(
-                                lines: QuotaPresentation.stackedLines(snapshot: state.displayedAccount.snapshot, preferences: state.preferences, verified: state.displayedAccount.verified, now: state.displayedAccount.now),
-                                showIcon: state.preferences.showIcon,
-                                colors: MenuBarRenderer.stackedColors(snapshot: state.displayedAccount.snapshot, preferences: state.preferences, verified: state.displayedAccount.verified, now: state.displayedAccount.now)))
-                                .fixedSize()
-                        } else {
-                            if state.preferences.showIcon { Image(nsImage: ProviderIcon.codex()).resizable().renderingMode(.template).foregroundStyle(PanelPalette.primary).frame(width: 17, height: 17) }
-                            Text(AttributedString(MenuBarRenderer.title(snapshot: state.displayedAccount.snapshot, preferences: state.preferences, verified: state.displayedAccount.verified, now: state.displayedAccount.now)))
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
-                    Text("修改立即应用到真正的 macOS 菜单栏。* 表示旧快照，-- 表示未知或重置待确认。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-
-
-                Section("菜单栏显示内容") {
-                    Toggle("显示菜单栏图标", isOn: bind(\.showIcon))
-                    if state.preferences.showIcon {
-                        HStack(spacing: 7) {
-                            Image(nsImage: ProviderIcon.codex()).resizable().renderingMode(.template).foregroundStyle(PanelPalette.primary).frame(width: 18, height: 18)
-                            Text("当前服务：Codex").font(.caption).foregroundStyle(.secondary)
-                        }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: compactWidth ? 1 : 2),
+                          alignment: .leading, spacing: 12) {
+                    ForEach(state.orderedAccounts, id: \.id) { entry in
+                        AccountSettingsCard(owner: state, account: entry.state, controller: state.dualClient, profileID: entry.id)
                     }
-                    Toggle((state.bucket?.primary?.label ?? "短周期") + "剩余", isOn: bind(\.showPrimary))
-                    Toggle((state.bucket?.secondary?.label ?? "长周期") + "剩余", isOn: bind(\.showSecondary))
-                    Toggle("短期重置（时:分）", isOn: bind(\.showPrimaryReset))
-                    Toggle("长期重置（月-日）", isOn: bind(\.showSecondaryReset))
-                    Toggle("套餐名称", isOn: bind(\.showPlan))
+                    Button { state.addAccount() } label: {
+                        VStack(spacing: 4) {
+                            Text("＋ 添加账号").font(.system(size: 13, weight: .semibold))
+                            Text("通过官方网页登录").font(.system(size: 11))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 130)
+                        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(TidePalette.tertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])) }
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain).foregroundStyle(TidePalette.tertiary)
                 }
-                Section("排列方式") {
-                    Toggle("菜单栏堆叠显示", isOn: bind(\.isStacked))
-                    if state.preferences.isStacked {
-                        Text("上方显示 7 天剩余，下方显示 5 小时剩余；具体窗口以账号返回为准。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Toggle("显示额度标签（例如 5h、7d）", isOn: bind(\.showLabels))
-                    Toggle("显示重置描述（短期重置、长期重置）", isOn: bind(\.showResetDescriptions))
-                    Toggle("使用分隔符", isOn: bind(\.useSeparator))
-                    Picker("分隔符样式", selection: bind(\.separator)) {
-                        Text("竖线  | ").tag("|"); Text("圆点  · ").tag("·"); Text("斜线  / ").tag("/"); Text("横线  — ").tag("—")
-                    }.disabled(!state.preferences.useSeparator)
-                    Text(state.preferences.useSeparator ? "用所选分隔符分开各项。" : "各项仅使用空格排开。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Section("百分比颜色联动") {
-                    Toggle("额度卡片和账号列表跟随百分比颜色", isOn: bind(\.followsQuotaColors))
-                }
-                MenuColorRulesView(title: "5 小时百分比颜色", rules: Binding(
-                    get: { state.preferences.primaryColorRules ?? [] }, set: { state.preferences.primaryColorRules = $0 }))
-                MenuColorRulesView(title: "7 天百分比颜色", rules: Binding(
-                    get: { state.preferences.secondaryColorRules ?? [] }, set: { state.preferences.secondaryColorRules = $0 }))
-
-        }.formStyle(.grouped)
+            }.padding(.horizontal, 30).padding(.top, 10).padding(.bottom, 24)
+        }.disabled(preview)
     }
+
+    private var menuPage: some View { TideMenuSettings(owner: state) }
+
     private var appearancePage: some View {
         Form {
 
@@ -239,7 +206,8 @@ struct UsageSettingsView: View {
     private var aboutPage: some View {
         ScrollView {
             VStack(spacing: 14) {
-                OrbitMark(size: 50).padding(.top, 24)
+                OrbitMark(size: 50)
+                    .padding(.top, 24)
                 Text("CodexUsageBar").font(.system(size: 24, weight: .semibold)).tracking(-0.6)
                 Text("让额度、重置时间与工作节奏，一目了然。").font(.system(size: 12)).foregroundStyle(PanelPalette.secondary)
                 Text("v" + state.appUpdates.currentVersion).font(.caption).foregroundStyle(PanelPalette.secondary)

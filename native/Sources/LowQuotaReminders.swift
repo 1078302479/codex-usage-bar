@@ -6,6 +6,26 @@ struct LowQuotaReminder: Equatable, Sendable {
     let identifier: String
     let resetsAt: Date
     let body: String
+    var title: String? = nil
+    var recommendedProfileID: String? = nil
+
+    static let forecastCategory = "usagebar.tide.forecast"
+    static let showRecommendation = "usagebar.tide.show-account"
+    static let later = "usagebar.tide.later"
+
+    static func forecast(snapshot: QuotaSnapshot?, bucket: QuotaBucket?, projection: TideQuotaHistory.Projection?,
+                         recommendation: (id: String, label: String, remaining: Double)?, now: Date) -> Self? {
+        guard let scope = snapshot?.accountScope, let bucket, let projection, let exhaustion = projection.exhaustion,
+              exhaustion > now, exhaustion.timeIntervalSince(now) <= 90 * 60 else { return nil }
+        let key = [scope, bucket.id, String(projection.reset.timeIntervalSince1970)].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        let early = max(1, Int(projection.reset.timeIntervalSince(exhaustion) / 60))
+        var body = "比重置早约 \(early) 分钟（北京时间）。"
+        if let recommendation { body += " 备用账号 \(recommendation.label) 还剩 \(QuotaPresentation.percent(recommendation.remaining))。" }
+        return Self(identifier: "usagebar.forecast." + digest, resetsAt: projection.reset, body: body,
+                    title: (bucket.primary?.shortLabel ?? "Codex") + " 额度预计 " + QuotaPresentation.time(exhaustion) + " 用完",
+                    recommendedProfileID: recommendation?.id)
+    }
 
     static func plan(snapshot: QuotaSnapshot?, threshold: Int, now: Date) -> [Self] {
         guard let snapshot, let scope = snapshot.accountScope, !scope.isEmpty,
@@ -26,14 +46,17 @@ struct LowQuotaReminder: Equatable, Sendable {
 final class LowQuotaReminderController: ObservableObject {
     static let thresholds = [5, 10, 15, 20, 25, 30]
     private static let enabledKey = "low-quota-reminders.enabled.v1"
+    private static let forecastKey = "forecast-reminders.enabled.v1"
     private static let thresholdKey = "low-quota-reminders.threshold.v1"
     private static let ledgerKey = "low-quota-reminders.ledger.v1"
 
     @Published private(set) var enabled: Bool
+    @Published private(set) var forecastEnabled: Bool
     @Published private(set) var threshold: Int
     @Published private(set) var permission: ReminderPermission = .unknown
     @Published private(set) var isUpdating = false
     var activeSnapshot: (() -> QuotaSnapshot?)?
+    var activeForecast: ((Date) -> LowQuotaReminder?)?
     var onNeedsRefresh: (() -> Void)?
 
     private let defaults: UserDefaults
@@ -48,12 +71,16 @@ final class LowQuotaReminderController: ObservableObject {
         self.center = center
         self.clock = clock
         enabled = defaults.bool(forKey: Self.enabledKey)
+        forecastEnabled = defaults.bool(forKey: Self.forecastKey)
         let savedThreshold = defaults.integer(forKey: Self.thresholdKey)
         threshold = Self.thresholds.contains(savedThreshold) ? savedThreshold : 10
         sent = defaults.dictionary(forKey: Self.ledgerKey) as? [String: Date] ?? [:]
     }
 
-    func setEnabled(_ value: Bool) async {
+    func setEnabled(_ value: Bool) async { await setNotification(value, forecast: false) }
+    func setForecastEnabled(_ value: Bool) async { await setNotification(value, forecast: true) }
+
+    private func setNotification(_ value: Bool, forecast: Bool) async {
         guard !isUpdating else { return }
         isUpdating = true
         defer { isUpdating = false }
@@ -65,8 +92,8 @@ final class LowQuotaReminderController: ObservableObject {
             }
             guard permission == .allowed else { return }
         }
-        enabled = value
-        defaults.set(value, forKey: Self.enabledKey)
+        if forecast { forecastEnabled = value } else { enabled = value }
+        defaults.set(value, forKey: forecast ? Self.forecastKey : Self.enabledKey)
         if value { onNeedsRefresh?() }
     }
 
@@ -83,7 +110,7 @@ final class LowQuotaReminderController: ObservableObject {
     }
 
     func check() {
-        guard enabled else { return }
+        guard enabled || forecastEnabled else { return }
         needsCheck = true
         guard worker == nil else { return }
         worker = Task { [weak self] in
@@ -101,9 +128,10 @@ final class LowQuotaReminderController: ObservableObject {
     }
 
     private func candidates() -> [LowQuotaReminder] {
-        guard enabled else { return [] }
-        return LowQuotaReminder.plan(snapshot: activeSnapshot?(), threshold: threshold, now: clock())
-            .filter { sent[$0.identifier] == nil }
+        let now = clock()
+        var candidates = enabled ? LowQuotaReminder.plan(snapshot: activeSnapshot?(), threshold: threshold, now: now) : []
+        if forecastEnabled, let forecast = activeForecast?(now) { candidates.append(forecast) }
+        return candidates.filter { sent[$0.identifier] == nil }
     }
 
     private func notify() async {

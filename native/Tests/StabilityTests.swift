@@ -4,10 +4,24 @@ import Foundation
 @main struct StabilityTests {
     @MainActor static func main() throws {
         try recentLogs()
+        settingsFrameFitsVisibleScreen()
         if CommandLine.arguments.contains("--ui") { presentationLifecycle() }
         if CommandLine.arguments.contains("--window") { fallbackWindowLifecycle() }
         if CommandLine.arguments.contains("--exclusive") { exclusivePresentation() }
         if CommandLine.arguments.contains("--menu") { menuVisibility() }
+    }
+
+    static func settingsFrameFitsVisibleScreen() {
+        for screen in [CGRect(x: 0, y: 30, width: 1440, height: 850),
+                       CGRect(x: -1760, y: 120, width: 1760, height: 950),
+                       CGRect(x: 1920, y: -100, width: 640, height: 520)] {
+            let window = OrbitLayout.settingsFrame(in: screen)
+            precondition(screen.contains(window))
+            precondition(window.midX == screen.midX && window.midY == screen.midY)
+            precondition(window.width == min(860, screen.width - 32))
+            precondition(window.height == min(650, screen.height - 32))
+        }
+        print("PASS: settings frame is centered and contained on regular, secondary, and compact displays")
     }
 
     static func recentLogs() throws {
@@ -160,6 +174,18 @@ import Foundation
                 oldWindow = window
                 oldSettings = window.contentViewController
                 precondition(oldSettings != nil)
+                if let screen = window.screen {
+                    let expectedFrame = OrbitLayout.settingsFrame(in: screen.visibleFrame)
+                    precondition(screen.visibleFrame.contains(window.frame) &&
+                                 abs(window.frame.midX - expectedFrame.midX) <= 1 &&
+                                 abs(window.frame.midY - expectedFrame.midY) <= 1,
+                                 "Settings should open centered inside the visible screen")
+                }
+                let originalFrame = window.frame
+                state.settingsTab = .accounts
+                window.contentView?.layoutSubtreeIfNeeded()
+                precondition(window.frame.equalTo(originalFrame), "Switching settings tabs must not resize or shift the window")
+                state.settingsTab = .menuBar
                 delegate.openSettings()
                 precondition(delegate.settingsWindow === window)
                 window.close()

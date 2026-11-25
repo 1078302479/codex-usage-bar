@@ -138,6 +138,63 @@ struct PercentageColorRule: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+enum TideMenuStyle: String, CaseIterable, Codable, Sendable, Identifiable {
+    case ring, stack, bars, mini, legacy
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .ring: "双环"
+        case .stack: "堆叠文字"
+        case .bars: "双色条"
+        case .mini: "信号灯"
+        case .legacy: "单行文字"
+        }
+    }
+}
+
+enum TideMenuElement: String, CaseIterable, Codable, Sendable, Identifiable {
+    case icon, shortQuota, longQuota, reset, plan, forecast, separator
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .icon: "图标"
+        case .shortQuota: "5h 剩余"
+        case .longQuota: "7d 剩余"
+        case .reset: "重置时间"
+        case .plan: "套餐名称"
+        case .forecast: "预计用完"
+        case .separator: "分隔符"
+        }
+    }
+
+    func enabled(in p: Preferences) -> Bool {
+        switch self {
+        case .icon: p.showIcon
+        case .shortQuota: p.showPrimary
+        case .longQuota: p.showSecondary
+        case .reset: p.showPrimaryReset || p.showSecondaryReset
+        case .plan: p.showPlan
+        case .forecast: p.tideShowForecast == true
+        case .separator: p.useSeparator
+        }
+    }
+
+    func toggle(in p: inout Preferences) {
+        let next = !enabled(in: p)
+        switch self {
+        case .icon: p.showIcon = next
+        case .shortQuota: p.showPrimary = next
+        case .longQuota: p.showSecondary = next
+        case .reset: p.showPrimaryReset = next; p.showSecondaryReset = next
+        case .plan: p.showPlan = next
+        case .forecast: p.tideShowForecast = next
+        case .separator: p.useSeparator = next
+        }
+    }
+}
+
 struct Preferences: Codable, Sendable, Equatable {
     var panelCompact: Bool? = nil
     var panelFitsScreen: Bool? = nil
@@ -150,9 +207,19 @@ struct Preferences: Codable, Sendable, Equatable {
     }
     // Optional for backwards-compatible decoding of existing preferences.v1.
     var stackedDisplay: Bool? = nil
+    var tideMenuStyle: TideMenuStyle? = nil
+    var tideMenuOrder: [TideMenuElement]? = nil
+    var tideShowForecast: Bool? = nil
+    var tideLowThreshold: Double? = nil
+    var tideHighThreshold: Double? = nil
+    var menuStyle: TideMenuStyle { tideMenuStyle ?? stackedDisplay.map { $0 ? .stack : .legacy } ?? .ring }
+    var menuElements: [TideMenuElement] {
+        var seen = Set<TideMenuElement>()
+        return ((tideMenuOrder ?? []) + TideMenuElement.allCases).filter { seen.insert($0).inserted }
+    }
     var isStacked: Bool {
         get { stackedDisplay == true }
-        set { stackedDisplay = newValue }
+        set { stackedDisplay = newValue; tideMenuStyle = newValue ? .stack : .legacy }
     }
     var showIcon = true
     var showPrimary = true

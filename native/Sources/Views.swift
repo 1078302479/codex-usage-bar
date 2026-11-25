@@ -8,79 +8,35 @@ struct QuotaPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            panelHeader
-            Divider()
+            TidePanelHeader(owner: state, controller: state.dualClient)
             AppUpdateBanner(updates: state.appUpdates)
-            panelScroll
-            Divider()
-            panelFooter
-        }
-        .alert("删除账号？", isPresented: Binding(get: { state.pendingAccountDeletion != nil }, set: { if !$0 { state.cancelAccountDeletion() } })) {
-            Button("取消", role: .cancel) { state.cancelAccountDeletion() }
-            Button("确认删除", role: .destructive) { state.confirmAccountDeletion() }
-        } message: {
-            Text("将退出并移除该账号，重新使用时需要登录。本地项目、聊天和模型配置会保留。")
+            ScrollView(.vertical) {
+                OrbitPanelContent(owner: state, controller: state.dualClient, openSettings: openSettings)
+                    .padding(.top, 4).padding(.bottom, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: PanelContentHeightKey.self, value: proxy.size.height)
+                    })
+            }
+            .frame(maxHeight: .infinity)
+            if !state.accountPickerPresented { TidePanelFooter(owner: state, account: state.displayedAccount, openSettings: openSettings) }
         }
         .overlay(alignment: .bottom) { resizeHandle }
         .frame(width: OrbitLayout.panelWidth, height: state.panelHeight)
         .onPreferenceChange(PanelContentHeightKey.self) { height in
             Task { @MainActor in state.panelContentMeasured(height) }
         }
-        .foregroundStyle(PanelPalette.primary)
-        .tint(PanelPalette.link)
-        .background(PanelPalette.background)
-    }
-
-    private var panelHeader: some View {
-        HStack(spacing: 9) {
-            OrbitMark()
-            Text("CodexUsageBar").font(.system(size: 13, weight: .medium))
-            Spacer()
-            PanelMonitorStatus(account: state.displayedAccount)
-            if state.isRefreshing { ProgressView().controlSize(.small) }
-            Button { state.refreshAllAccounts() } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.plain).foregroundStyle(PanelPalette.secondary).disabled(state.isRefreshing)
-                .help("核验所有账号额度").accessibilityLabel("核验所有账号额度")
-
-
-        }.padding(.horizontal, OrbitLayout.inset).padding(.vertical, 10)
-    }
-
-    private var panelScroll: some View {
-        ScrollView(.vertical) { panelContent }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(PanelPalette.panelBackdrop)
-    }
-
-    private var panelContent: some View {
-        VStack(spacing: 0) {
-            OrbitPanelContent(owner: state, controller: state.dualClient, openSettings: openSettings)
-        }
-        .frame(maxWidth: .infinity)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(GeometryReader { proxy in
-            Color.clear.preference(key: PanelContentHeightKey.self, value: proxy.size.height)
-        })
-    }
-
-    private var panelFooter: some View {
-        HStack {
-            Button(action: openSettings) { Label("显示与连接设置…", systemImage: "slider.horizontal.3") }
-                .buttonStyle(OrbitActionStyle()).accessibilityLabel("打开 CodexUsageBar 设置")
-            Spacer()
-            Label(state.displayedAccount.updateStatus.title, systemImage: state.displayedAccount.updateStatus.symbol)
-                .font(.system(size: 9)).foregroundStyle(state.displayedAccount.updateStatus.isWarning ? PanelPalette.warning : PanelPalette.secondary)
-                .help(state.displayedAccount.statusDetail)
-            Spacer()
-            Button("退出") { NSApplication.shared.terminate(nil) }.buttonStyle(.plain)
-        }.font(.system(size: 11)).foregroundStyle(PanelPalette.secondary).padding(.horizontal, 20).padding(.vertical, 10)
+        .onChange(of: state.accountPickerPresented) { _, _ in state.onPanelResize?(nil) }
+        .font(TideTypography.body)
+        .foregroundStyle(TidePalette.ink)
+        .background(TidePalette.background)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .circular))
     }
 
     private var resizeHandle: some View {
-        Capsule().fill(PanelPalette.secondary.opacity(0.4)).frame(width: 30, height: 3)
-            .padding(.horizontal, 32).padding(.vertical, 4)
+        Color.clear.frame(width: 88, height: 5)
             .contentShape(Rectangle())
-            .help("向下拖动以拉长弹窗")
+            .help("拖动调整弹窗高度")
             .gesture(DragGesture(minimumDistance: 2)
                 .onChanged { value in
                     if state.panelDragStart == nil { state.panelDragStart = state.panelHeight }
@@ -88,27 +44,101 @@ struct QuotaPanelView: View {
                 }
                 .onEnded { _ in state.panelDragStart = nil })
     }
-
 }
 
-private struct PanelMonitorStatus: View {
+@MainActor
+private struct TidePanelHeader: View {
+    @ObservedObject var owner: AppState
+    @ObservedObject var controller: DualClientController
+
+    var body: some View {
+        let displayed = owner.displayedAccount
+        let id = owner.homeAccounts.first { $0.state === displayed }?.id ?? "primary"
+        let active = controller.detected && controller.activeProfileID == id
+        HStack(spacing: 10) {
+            Button { owner.accountPickerPresented.toggle() } label: {
+                HStack(spacing: 10) {
+                    TideAvatar(index: owner.tideAvatarIndex(id))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayed.snapshot?.accountLabel ?? "CodexUsageBar")
+                            .font(TideTypography.account).foregroundStyle(TidePalette.ink).lineLimit(1)
+                        HStack(spacing: 6) {
+                            if active {
+                                Circle().fill(TidePalette.green).frame(width: 6, height: 6)
+                                    .background(TidePalette.green.opacity(0.25), in: Circle().inset(by: -3))
+                            }
+                            Text(active ? "当前登录" : (displayed.snapshot != nil ? "正在查看" : displayed.updateStatus.title))
+                            if let plan = displayed.snapshot?.planType {
+                                Text(plan.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.3)
+                                    .foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 1)
+                                    .background(LinearGradient(colors: [TidePalette.coral, TidePalette.indigo], startPoint: .leading, endPoint: .trailing),
+                                                in: RoundedRectangle(cornerRadius: 5))
+                            }
+                        }.font(TideTypography.caption).foregroundStyle(TidePalette.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: owner.accountPickerPresented ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(TidePalette.tertiary)
+                }
+                .padding(.leading, 6).padding(.trailing, 10)
+                .frame(height: 43)
+                .background(TidePalette.surface, in: RoundedRectangle(cornerRadius: 14, style: .circular))
+            }.buttonStyle(.plain).accessibilityLabel("查看账号")
+            Button { owner.refreshAllAccounts() } label: {
+                if owner.isRefreshing { ProgressView().controlSize(.small).frame(width: 32, height: 32) }
+                else { Image(systemName: "arrow.clockwise").font(.system(size: 15, weight: .medium)).frame(width: 32, height: 32) }
+            }
+            .buttonStyle(.plain).foregroundStyle(TidePalette.secondary)
+            .background(TidePalette.surface, in: RoundedRectangle(cornerRadius: 10, style: .circular))
+            .disabled(owner.isRefreshing).keyboardShortcut("r").accessibilityLabel("刷新额度")
+        }
+        .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
+        if !active, controller.detected, !owner.accountPickerPresented, displayed.snapshot != nil {
+            Button("正在查看备用账号 · 返回当前") {
+                owner.selectedAccountID = controller.activeProfileID
+                owner.showingSecondAccountDetails = controller.activeSecondary
+            }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(TidePalette.indigo).padding(.bottom, 6)
+        }
+    }
+}
+
+@MainActor
+private struct TidePanelFooter: View {
+    @ObservedObject var owner: AppState
     @ObservedObject var account: AppState
+    let openSettings: () -> Void
 
     var body: some View {
         let status = account.updateStatus
-        HStack(spacing: 5) {
-            Circle()
-                .fill(status == .verified ? PanelPalette.success : status.isWarning ? PanelPalette.warning : PanelPalette.secondary)
-                .frame(width: 5, height: 5)
-            Text(status == .verified ? "实时监测" : status.title)
-                .font(.system(size: 10))
-                .foregroundStyle(PanelPalette.secondary)
+        HStack(spacing: 8) {
+            Button(action: openSettings) {
+                HStack(spacing: 4) {
+                    Image(systemName: "gearshape").font(.system(size: 9.5, weight: .regular))
+                    Text("设置")
+                    key("⌘,")
+                }
+            }.keyboardShortcut(",")
+            Button { owner.refreshAllAccounts() } label: {
+                HStack(spacing: 4) { Text("刷新"); key("⌘R") }
+            }.disabled(owner.isRefreshing)
+            Spacer(minLength: 0)
+            HStack(spacing: 5) {
+                Circle().fill(status == .verified ? TidePalette.green : status.isWarning ? TidePalette.amber : TidePalette.tertiary)
+                    .frame(width: 9, height: 9)
+                Text((status == .verified ? account.lastSuccessfulAt ?? account.snapshot?.observedAt : nil)
+                    .map { QuotaPresentation.time($0) + " " + status.title } ?? status.title)
+                    .lineLimit(1)
+            }.help(account.statusDetail)
+            Button("退出") { NSApp.terminate(nil) }.padding(.leading, 5)
         }
-        .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(PanelPalette.surface, in: Capsule())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("额度监测，" + status.title)
-        .help(account.statusDetail)
+        .buttonStyle(.plain).font(.system(size: 11.5, weight: .regular)).foregroundStyle(TidePalette.tertiary)
+        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 14)
+    }
+
+    private func key(_ title: String) -> some View {
+        Text(title).font(TideTypography.mono).foregroundStyle(TidePalette.secondary)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 4).strokeBorder(TidePalette.line))
     }
 }
 

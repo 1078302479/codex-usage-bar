@@ -3,9 +3,19 @@ import AppKit
 
 /// Layout and visual tokens shared by the quota panel and settings window.
 enum OrbitLayout {
-    static let panelWidth: CGFloat = 420
+    static let panelWidth: CGFloat = 372
     static let defaultPanelHeight: CGFloat = 820
-    static let inset: CGFloat = 18
+    static let settingsSize = CGSize(width: 860, height: 650)
+
+    static func settingsFrame(in visibleFrame: CGRect) -> CGRect {
+        let horizontalInset = min(16, visibleFrame.width / 16)
+        let verticalInset = min(16, visibleFrame.height / 16)
+        let available = visibleFrame.insetBy(dx: horizontalInset, dy: verticalInset)
+        let width = min(settingsSize.width, available.width)
+        let height = min(settingsSize.height, available.height)
+        return CGRect(x: visibleFrame.midX - width / 2, y: visibleFrame.midY - height / 2,
+                      width: width, height: height)
+    }
 }
 
 struct OrbitPreviewKey: EnvironmentKey { static let defaultValue = false }
@@ -27,21 +37,6 @@ extension View {
     }
 }
 
-struct OrbitPlanBadge: View {
-    let plan: String
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        let free = plan.lowercased() == "free"
-        let dark = colorScheme == .dark
-        Text(plan.capitalized)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(free ? PanelPalette.secondary : dark ? Color(red: 0.79, green: 0.68, blue: 1) : Color(red: 0.47, green: 0.25, blue: 0.84))
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(free ? PanelPalette.surface : dark ? Color(red: 0.28, green: 0.21, blue: 0.39) : Color(red: 0.92, green: 0.88, blue: 1), in: Capsule())
-    }
-}
-
 struct OrbitActionStyle: ButtonStyle {
     var prominent = false
     @Environment(\.isEnabled) private var enabled
@@ -56,6 +51,7 @@ struct OrbitActionStyle: ButtonStyle {
     }
 }
 
+@MainActor
 struct OrbitMark: View {
     var size: CGFloat = 26
     private static let appIcon: NSImage? = {
@@ -71,7 +67,6 @@ struct OrbitMark: View {
                 Image(nsImage: appIcon)
                     .resizable()
                     .scaledToFit()
-                    .scaleEffect(1.14)
                     .frame(width: size, height: size)
             } else {
                 HStack(spacing: 0) {

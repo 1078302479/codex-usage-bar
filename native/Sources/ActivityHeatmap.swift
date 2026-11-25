@@ -4,8 +4,10 @@ import SwiftUI
 struct ActivityHeatmap: NSViewRepresentable {
     let activity: TokenActivity
     let now: Date
+    var compact = false
     func makeNSView(context: Context) -> ActivityHeatmapView { ActivityHeatmapView() }
     func updateNSView(_ view: ActivityHeatmapView, context: Context) {
+        view.compact = compact
         view.update(days: TokenActivity.heatmapDays(now: now), values: activity.dailyValues)
     }
 }
@@ -18,6 +20,7 @@ final class ActivityHeatmapView: NSView {
     private var values: [String: Double] = [:]
     private var hovered: Int?
     private var tracking: NSTrackingArea?
+    var compact = false
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -34,14 +37,17 @@ final class ActivityHeatmapView: NSView {
         let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
         addTrackingArea(area); tracking = area
     }
-    private var cellWidth: CGFloat { max(1, (bounds.width - 22 - 25 * 3) / 26) }
+    private var cellWidth: CGFloat { compact ? min(7, max(1, (bounds.width - 25 * 2.5) / 26)) : max(1, (bounds.width - 22 - 25 * 3) / 26) }
+    private var origin: NSPoint { compact ? .zero : NSPoint(x: 22, y: 22) }
+    private var columnStep: CGFloat { cellWidth + (compact ? 2.5 : 3) }
+    private var rowStep: CGFloat { compact ? 9.5 : 13 }
     private func cellRect(_ index: Int) -> NSRect {
-        NSRect(x: 22 + CGFloat(index / 7) * (cellWidth + 3), y: 22 + CGFloat(index % 7) * 13, width: cellWidth, height: 10)
+        NSRect(x: origin.x + CGFloat(index / 7) * columnStep, y: origin.y + CGFloat(index % 7) * rowStep, width: cellWidth, height: compact ? 7 : 10)
     }
     func index(at point: NSPoint) -> Int? {
         guard days.count == 182 else { return nil }
-        let week = Int(floor((point.x - 22) / (cellWidth + 3)))
-        let day = Int(floor((point.y - 22) / 13))
+        let week = Int(floor((point.x - origin.x) / columnStep))
+        let day = Int(floor((point.y - origin.y) / rowStep))
         guard (0..<26).contains(week), (0..<7).contains(day) else { return nil }
         let index = week * 7 + day
         return cellRect(index).contains(point) ? index : nil
@@ -83,22 +89,30 @@ final class ActivityHeatmapView: NSView {
             ? [NSColor(white: 0.21, alpha: 1), NSColor(red: 0.37, green: 0.33, blue: 0.46, alpha: 1), NSColor(red: 0.48, green: 0.41, blue: 0.59, alpha: 1), NSColor(red: 0.60, green: 0.50, blue: 0.73, alpha: 1), NSColor(red: 0.71, green: 0.62, blue: 0.85, alpha: 1)]
             : [NSColor(white: 0.965, alpha: 1), NSColor(red: 0.88, green: 0.85, blue: 0.94, alpha: 1), NSColor(red: 0.76, green: 0.70, blue: 0.88, alpha: 1), NSColor(red: 0.65, green: 0.56, blue: 0.80, alpha: 1), NSColor(red: 0.50, green: 0.39, blue: 0.69, alpha: 1)]
         let peak = values.values.max() ?? 0
-        var previousMonth = ""
-        for week in 0..<26 {
-            let key = days[week * 7]
-            let month = String(key.prefix(7))
-            if month != previousMonth {
-                if week < 25 && (week > 0 || (Int(key.suffix(2)) ?? 31) <= 7) { text(String(Int(key.dropFirst(5).prefix(2)) ?? 0) + "月", at: NSPoint(x: cellRect(week * 7).minX, y: 2)) }
-                previousMonth = month
+        if !compact {
+            var previousMonth = ""
+            for week in 0..<26 {
+                let key = days[week * 7]
+                let month = String(key.prefix(7))
+                if month != previousMonth {
+                    if week < 25 && (week > 0 || (Int(key.suffix(2)) ?? 31) <= 7) { text(String(Int(key.dropFirst(5).prefix(2)) ?? 0) + "月", at: NSPoint(x: cellRect(week * 7).minX, y: 2)) }
+                    previousMonth = month
+                }
             }
-        }
-        for (row, name) in [(1, "一"), (3, "三"), (5, "五")] {
-            text(name, at: NSPoint(x: 0, y: 22 + CGFloat(row) * 13), size: 8)
+            for (row, name) in [(1, "一"), (3, "三"), (5, "五")] {
+                text(name, at: NSPoint(x: 0, y: 22 + CGFloat(row) * 13), size: 8)
+            }
         }
         for index in days.indices {
             let rect = cellRect(index)
             let path = NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2)
-            if let value = values[days[index]] {
+            if compact {
+                let value = values[days[index]] ?? 0
+                let level = value <= 0 || peak <= 0 ? 0 : max(1, min(4, Int(ceil(sqrt(value / peak) * 4))))
+                let track = dark ? NSColor(srgbRed: 0.153, green: 0.165, blue: 0.196, alpha: 1) : NSColor(srgbRed: 0.953, green: 0.949, blue: 0.933, alpha: 1)
+                let color = track.blended(withFraction: CGFloat(level) / 4, of: NSColor(srgbRed: 0.482, green: 0.424, blue: 1, alpha: 1)) ?? track
+                color.setFill(); path.fill()
+            } else if let value = values[days[index]] {
                 let level = value <= 0 || peak <= 0 ? 0 : max(1, min(4, Int(ceil(sqrt(value / peak) * 4))))
                 palette[level].setFill(); path.fill()
             } else {
@@ -109,18 +123,21 @@ final class ActivityHeatmapView: NSView {
                 NSColor.controlAccentColor.setStroke(); path.lineWidth = 1.5; path.stroke()
             }
         }
-        text("悬停或点击查看", at: NSPoint(x: 0, y: 121), size: 9)
-        text("少", at: NSPoint(x: bounds.width - 88, y: 121), size: 8)
-        for level in 0..<5 {
-            palette[level].setFill()
-            NSBezierPath(roundedRect: NSRect(x: bounds.width - 72 + CGFloat(level) * 11, y: 122, width: 8, height: 8), xRadius: 2, yRadius: 2).fill()
+        if !compact {
+            text("悬停或点击查看", at: NSPoint(x: 0, y: 121), size: 9)
+            text("少", at: NSPoint(x: bounds.width - 88, y: 121), size: 8)
+            for level in 0..<5 {
+                palette[level].setFill()
+                NSBezierPath(roundedRect: NSRect(x: bounds.width - 72 + CGFloat(level) * 11, y: 122, width: 8, height: 8), xRadius: 2, yRadius: 2).fill()
+            }
+            text("多", at: NSPoint(x: bounds.width - 12, y: 121), size: 8)
         }
-        text("多", at: NSPoint(x: bounds.width - 12, y: 121), size: 8)
         if let hovered {
             let cell = cellRect(hovered)
             let width: CGFloat = 160; let height: CGFloat = 40
             let x = max(0, min(bounds.width - width, cell.midX - width / 2))
-            let y = cell.minY >= 45 ? cell.minY - height - 4 : cell.maxY + 5
+            let preferredY = cell.minY >= 45 ? cell.minY - height - 4 : cell.maxY + 5
+            let y = max(0, min(bounds.height - height, preferredY))
             let tooltip = NSRect(x: x, y: y, width: width, height: height)
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.22); shadow.shadowBlurRadius = 5; shadow.shadowOffset = NSSize(width: 0, height: 1); shadow.set()

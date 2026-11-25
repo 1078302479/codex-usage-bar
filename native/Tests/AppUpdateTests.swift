@@ -76,10 +76,11 @@ import Foundation
   defer { try? fm.removeItem(at: root) }
   for launchSuccess in [true, false] {
    let folder = root.appendingPathComponent(launchSuccess ? "success" : "rollback")
-   let target = folder.appendingPathComponent("CodexUsageBar.app"), staged = folder.appendingPathComponent("new.app")
-   let backup = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000003.app")
+   let target = folder.appendingPathComponent("CodexUsageBar.app"), staged = folder.appendingPathComponent("new.noindex")
+   let backup = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000003.noindex")
    let previous = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000002.app")
-   let older = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000001.app")
+   let archivedPrevious = previous.deletingPathExtension().appendingPathExtension("noindex")
+   let older = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000001.noindex")
    let unrelated = folder.appendingPathComponent(".CodexUsageBar-backup-00000000-0000-0000-0000-000000000004.app")
    for app in [target, staged, previous, older, unrelated] {
     let contents = app.appendingPathComponent("Contents")
@@ -91,6 +92,8 @@ import Foundation
    try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3600)], ofItemAtPath: older.path)
    try Data("old".utf8).write(to: target.appendingPathComponent("version"))
    try Data("new".utf8).write(to: staged.appendingPathComponent("version"))
+   let staleTimestamp = Date().addingTimeInterval(-3600)
+   try fm.setAttributes([.modificationDate: staleTimestamp], ofItemAtPath: staged.path)
    let script = folder.appendingPathComponent("install.sh")
    let source = AppUpdateInstaller.helperScript.replacingOccurrences(of: "/usr/bin/codesign --verify --deep --strict", with: "/usr/bin/true").replacingOccurrences(of: "/usr/bin/open", with: launchSuccess ? "/usr/bin/true" : "/usr/bin/false")
    try source.write(to: script, atomically: true, encoding: .utf8)
@@ -103,6 +106,8 @@ import Foundation
    precondition(data == Data((launchSuccess ? "new" : "old").utf8))
    precondition(!fm.fileExists(atPath: staged.path))
    if launchSuccess {
+    let installedDate = try fm.attributesOfItem(atPath: target.path)[.modificationDate] as! Date
+    precondition(installedDate.timeIntervalSince(staleTimestamp) > 1800)
     let old = try Data(contentsOf: backup.appendingPathComponent("version"))
     precondition(old == Data("old".utf8))
     precondition(!fm.fileExists(atPath: previous.path) && !fm.fileExists(atPath: older.path))
@@ -110,8 +115,9 @@ import Foundation
     precondition(!fm.fileExists(atPath: backup.path))
     precondition(fm.fileExists(atPath: previous.path) && fm.fileExists(atPath: older.path))
    }
-   let retained = launchSuccess ? backup : previous
+   let retained = launchSuccess ? backup : archivedPrevious
    let expiry = try AppUpdateInstaller.pruneBackups(for: target)
+   precondition(!fm.fileExists(atPath: previous.path))
    let modified = try fm.attributesOfItem(atPath: retained.path)[.modificationDate] as! Date
    precondition(abs(expiry!.timeIntervalSince(modified) - 259200) < 1)
    precondition(!fm.fileExists(atPath: older.path))

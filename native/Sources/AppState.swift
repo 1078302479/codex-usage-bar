@@ -134,7 +134,6 @@ final class AppState: ObservableObject {
             onDisplayChange?()
         }
     }
-    @Published var orbitActivitySelected = false
     @Published var accountPickerPresented = false
     @Published var comparisonsExpanded = true
     @Published var pendingSwitchConfirmation: String?
@@ -146,6 +145,7 @@ final class AppState: ObservableObject {
     @Published var selectedAccountID: String? { didSet { onDisplayChange?() } }
     @Published private(set) var additionalAccounts: [String: AppState] = [:]
     @Published private(set) var additionalAccountIDs: [String] = []
+    private var tideAvatarSlots: [String: Int] = [:]
     var accountEntries: [(id: String, state: AppState)] {
         (localAccountRemoved ? [] : [("primary", self)]) + (secondAccount.map { [("secondary", $0)] } ?? []) + additionalAccountIDs.compactMap { id in additionalAccounts[id].map { (id, $0) } }
     }
@@ -270,6 +270,8 @@ final class AppState: ObservableObject {
                     self.additionalAccounts.removeValue(forKey: id)
                     self.additionalAccountIDs.removeAll { $0 == id }
                     self.defaults.set(self.additionalAccountIDs, forKey: "additional-account-ids.v1")
+                    self.tideAvatarSlots.removeValue(forKey: id)
+                    self.defaults.set(self.tideAvatarSlots, forKey: "tide.avatar-slots.v1")
                 }
                 self.selectedAccountID = self.dualClient.activeProfileID
                 self.showingSecondAccountDetails = self.selectedAccountID == "secondary"
@@ -282,6 +284,12 @@ final class AppState: ObservableObject {
     }
     private func loadAdditionalAccount(_ id: String) {
         guard UUID(uuidString: id) != nil, additionalAccounts[id] == nil else { return }
+        if tideAvatarSlots[id] == nil {
+            let occupied = Set(tideAvatarSlots.values)
+            let slot = (2...max(2, occupied.count + 2)).first { !occupied.contains($0) }!
+            tideAvatarSlots[id] = slot
+            defaults.set(tideAvatarSlots, forKey: "tide.avatar-slots.v1")
+        }
         let home = Self.secondAccountHome.deletingLastPathComponent().appendingPathComponent(id)
         let saved = UserDefaults(suiteName: "com.guoyuming.UsageBar.account." + id)!
         let account = AppState(defaults: saved, client: CodexClient(codexHome: home), reminderCenter: MonitoringOnlyReminderCenter(), codexHome: home)
@@ -329,6 +337,7 @@ final class AppState: ObservableObject {
     @Published var activityError: String?
     @Published var activityUpdatedAt: Date?
     private var activityAttemptAt: Date?
+    private(set) var tideHistory = TideQuotaHistory()
     @Published var snapshot: QuotaSnapshot?
     @Published var verified = false
     @Published var isRefreshing = false
@@ -510,6 +519,8 @@ final class AppState: ObservableObject {
         precondition(!recovery.retryDelays.isEmpty && recovery.retryDelays.allSatisfy { $0 > 0 && $0.isFinite })
         self.defaults = defaults; self.client = client; self.recovery = recovery
         self.localAccountRemoved = defaults.bool(forKey: "local-account-removed.v1")
+        self.tideAvatarSlots = (defaults.dictionary(forKey: "tide.avatar-slots.v1") as? [String: Int] ?? [:])
+            .filter { UUID(uuidString: $0.key) != nil && (2...1_000_000).contains($0.value) }
         self.codexHome = codexHome
         self.loginOpener = loginOpener; self.secondaryFactory = secondaryFactory
         reminders = ResetCreditReminderController(defaults: defaults, center: reminderCenter)
@@ -524,6 +535,16 @@ final class AppState: ObservableObject {
                   account.verified, !account.isSigningOut else { return nil }
             return account.snapshot
         }
+        lowQuotaReminders.activeForecast = { [weak self] now in
+            guard let self, !self.paused, !self.dualClient.isSwitching, let account = self.reminderAccount else { return nil }
+            let recommendation = self.tideRecommendation(for: account).flatMap { entry in
+                entry.state.bucket?.primary?.remaining.map {
+                    (entry.id, entry.state.snapshot?.accountLabel ?? "备用账号", $0)
+                }
+            }
+            return LowQuotaReminder.forecast(snapshot: account.snapshot, bucket: account.bucket,
+                                             projection: account.tideProjection, recommendation: recommendation, now: now)
+        }
         lowQuotaReminders.onNeedsRefresh = { [weak self] in
             self?.reminderAccount?.scheduleRefresh(reason: "低额度提醒核验", delay: 0)
         }
@@ -534,6 +555,18 @@ final class AppState: ObservableObject {
     }
     var isFreeAccount: Bool {
         (snapshot?.planType ?? bucket?.planType)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "free"
+    }
+    var tideProjection: TideQuotaHistory.Projection? {
+        guard verified, !paused, !isSigningOut, lastFailure == nil else { return nil }
+        return tideHistory.projection(bucket: bucket, now: now)
+    }
+    func recordQuotaObservation(_ snapshot: QuotaSnapshot) { tideHistory.record(snapshot) }
+    func tideAvatarIndex(_ id: String) -> Int {
+        switch id {
+        case "primary": 0
+        case "secondary": 1
+        default: tideAvatarSlots[id] ?? 2
+        }
     }
     var bucket: QuotaBucket? { QuotaPresentation.selectedBucket(snapshot, preferences: preferences) }
     var menuTitle: String { QuotaPresentation.menuTitle(snapshot: snapshot, preferences: preferences, verified: verified, now: now) }
@@ -734,6 +767,7 @@ final class AppState: ObservableObject {
                     return
                 }
                 if snapshot?.accountScope != result.accountScope { tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; activityAttemptAt = nil }
+                recordQuotaObservation(result)
                 snapshot = result; verified = true; lastFailure = nil; authRecoveryAfter = nil; lastSuccessfulAt = result.observedAt; now = Date()
                 if codexHome != nil { loginMessage = "账号已核验。" }
                 updateReminderData()
@@ -825,6 +859,7 @@ final class AppState: ObservableObject {
 
     private func clearAccount() {
         activityAttemptAt = nil
+        tideHistory = TideQuotaHistory()
         verified = false; snapshot = nil; tokenActivity = nil; activityUpdatedAt = nil; activityError = nil; lastSuccessfulAt = nil
         defaults.removeObject(forKey: "quota-cache.v1")
         updateReminderData()

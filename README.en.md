@@ -8,6 +8,14 @@
 
 The Windows edition shows quota and reset credits in the Codex sidebar. Its installation guide and screenshot are on the Windows branch. [Windows branch guide](https://github.com/1078302479/codex-usage-bar/blob/windows/README.en.md) · [Windows release](https://github.com/1078302479/codex-usage-bar/releases/tag/windows-v0.1.7)
 
+## v0.1.20 · Tide interface
+
+- Wave and Tide cards show both quota windows, reset countdowns, and a depletion forecast. Reset credits, Token activity, and the heatmap share the same popup.
+- New menu bar styles include dual rings, two-color bars, and a status light. Settings opens centered and fits the available space on the current display.
+- The app uses the Tide rings icon. Updates refresh the app bundle timestamp and keep rollback copies in a format excluded from Spotlight.
+
+[Release notes](docs/releases/v0.1.20.md)
+
 ## v0.1.19 · Quota panel and account management
 
 - Start switching from an alternate account's card, then confirm the client restart.
@@ -78,14 +86,14 @@ This is an independent community project, not an official OpenAI application or 
 
 - Remaining allowances, reset times in Beijing time, and countdowns for independent quota windows. Actual window durations come from the service.
 - The menu bar uses red, amber, and green defaults. The account picker uses the standard text color by default and can follow custom percentage rules.
-- Horizontal quota bars, a compact account and subscription header, and light and dark activity views.
+- Wave and Tide quota cards, a compact account and subscription header, and a depletion forecast based on the last 30 minutes, in both light and dark appearance.
 - Configurable menu bar metrics, provider icon, labels, plan name, and separators.
 - Stacked mode: weekly allowance above the 5-hour allowance, or a regular single-line layout.
 - Compact resets: `HH:mm` for the short window and `MM-dd` for the long window, with independently optional descriptions.
 - Official lifetime tokens, peak daily tokens, longest-running turn, and current/longest activity streaks.
 - A 26-week heatmap with immediate hover/click details and exact daily token counts.
 - Event-following refresh with quota-only fallback checks every 15 seconds while the panel is visible and every 60 seconds in the background. Explicit 1-, 5-, and 15-minute polling remains available.
-- Official reset-credit count, nearest expiry, count expiring within 72 hours, and per-card expiry details without guessing missing dates.
+- Official reset-credit count and per-card expiry dates, with cards that expire within 72 hours highlighted.
 - Opt-in local expiry reminders 24 hours ahead, with fresh-validation catch-up, persistent account/card deduplication, and cancellation when usage, expiry, or account changes are detected.
 - Automatic recovery from network request failures, timeouts, and child-process disconnections with 5/15/30/60/120/300-second backoff, capped at five minutes. A network-return hint expedites one coalesced query. Authentication, configuration, and compatibility errors require user action instead of repeated automatic retries.
 - Explicit validation, stale-data, network-failure, login, and compatibility states, with the last successful validation and next retry time. Unverified cached data is labeled separately.
@@ -94,6 +102,10 @@ This is an independent community project, not an official OpenAI application or 
 Background resources: settings windows are released on close, and the quota panel releases its view while hidden. Quota monitoring and validation continue. Reopening restores current data and the panel height for the current run. Unchanged menu artwork is reused. Startup log discovery retains only the newest 24 candidates while still enumerating the directory.
 
 ## Screenshots
+
+The v0.1.20 Tide popup in light and dark appearance, using sample data.
+
+<img src="docs/images/screenshots/tide-light.png" width="300" alt="Tide popup in light appearance"> <img src="docs/images/screenshots/tide-dark.png" width="300" alt="Tide popup in dark appearance">
 
 Values reflect the capture time, account emails are masked, and the application UI is Chinese. The full menu bar screenshot was added on **2026-11-11**. The remaining **v0.1.6** screenshots were captured on **2026-10-30**, with some cropped.
 

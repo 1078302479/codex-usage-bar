@@ -7,6 +7,14 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 for base in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let size = base * scale
+        let name = "icon_\(base)x\(base)" + (scale == 2 ? "@2x" : "") + ".png"
+        let output = directory.appendingPathComponent(name)
+        let stem = sourceURL.deletingPathExtension().lastPathComponent
+        let alternate = sourceURL.deletingLastPathComponent().appendingPathComponent("\(stem)-\(size).png")
+        if FileManager.default.fileExists(atPath: alternate.path) {
+            try Data(contentsOf: alternate).write(to: output)
+            continue
+        }
         let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
                                       bytesPerRow: 0, bitsPerPixel: 0)!
@@ -15,7 +23,6 @@ for base in [16, 32, 128, 256, 512] {
         NSGraphicsContext.current?.imageInterpolation = .high
         source.draw(in: NSRect(x: 0, y: 0, width: size, height: size), from: .zero, operation: .copy, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
-        let name = "icon_\(base)x\(base)" + (scale == 2 ? "@2x" : "") + ".png"
-        try bitmap.representation(using: .png, properties: [:])!.write(to: directory.appendingPathComponent(name))
+        try bitmap.representation(using: .png, properties: [:])!.write(to: output)
     }
 }

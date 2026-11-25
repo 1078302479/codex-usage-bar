@@ -234,6 +234,11 @@ private actor ProfileClient: QuotaClient {
         precondition(!state.showsTokenActivity)
         precondition(Set(state.accountEntries.map { $0.id }).count == 4)
         precondition(defaults.stringArray(forKey: "additional-account-ids.v1") == state.additionalAccountIDs)
+        let restoredAvatars = AppState(defaults: defaults, client: ProfileClient("A"))
+        for (index, id) in state.additionalAccountIDs.enumerated() {
+            precondition(state.tideAvatarIndex(id) == index + 2)
+            precondition(restoredAvatars.tideAvatarIndex(id) == state.tideAvatarIndex(id))
+        }
         for (index, entry) in state.accountEntries.enumerated() {
             entry.state.snapshot = QuotaSnapshot(observedAt: Date(), accountScope: "user-\(index)", accountLabel: "User \(index)", planType: "plus", buckets: [])
             entry.state.verified = true

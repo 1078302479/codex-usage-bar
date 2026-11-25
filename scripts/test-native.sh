@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$ROOT/.build/swift-module-cache"
 FLAGS=(-swift-version 6 -parse-as-library -module-cache-path "$ROOT/.build/swift-module-cache")
-xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/QuotaModels.swift" "$ROOT/native/Sources/ResetCreditModels.swift" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Tests/CoreTests.swift" -o "$ROOT/.build/QuotaCoreTests"
+xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/QuotaModels.swift" "$ROOT/native/Sources/ResetCreditModels.swift" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Sources/TideForecast.swift" "$ROOT/native/Tests/CoreTests.swift" -o "$ROOT/.build/QuotaCoreTests"
 xcrun swiftc "${FLAGS[@]}" "$ROOT/native/Sources/TokenActivity.swift" "$ROOT/native/Sources/ActivityHeatmap.swift" "$ROOT/native/Tests/HeatmapTests.swift" -o "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/HeatmapTests"
 "$ROOT/.build/QuotaCoreTests"

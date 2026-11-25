@@ -60,7 +60,11 @@ struct SystemReminderCenter: ReminderNotificationCenter {
         guard let center else { throw CocoaError(.featureUnsupported) }
         guard reminder.resetsAt > Date() else { throw ReminderSchedulingError.expired }
         let content = UNMutableNotificationContent()
-        content.title = "Codex 额度即将用完"
+        content.title = reminder.title ?? "Codex 额度即将用完"
+        if let id = reminder.recommendedProfileID {
+            content.categoryIdentifier = LowQuotaReminder.forecastCategory
+            content.userInfo = ["recommendedProfileID": id]
+        }
         content.body = reminder.body
         content.sound = .default
         try await center.add(UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: nil))

@@ -17,8 +17,8 @@ enum MenuBarRenderer {
         return NSColor(srgbRed: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
                        blue: Double(rgb & 255) / 255, alpha: 1)
     }
-    static func attributed(_ text: String, colors: [NSColor], font: NSFont) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+    static func attributed(_ text: String, colors: [NSColor], font: NSFont, foreground: NSColor = .labelColor) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: foreground])
         let regex = try! NSRegularExpression(pattern: #"<?[0-9]+(?:\.[0-9]+)?%"#)
         for (index, match) in regex.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)).enumerated() {
             if index < colors.count { result.addAttribute(.foregroundColor, value: colors[index], range: match.range) }
@@ -30,7 +30,11 @@ enum MenuBarRenderer {
         let bucket = QuotaPresentation.selectedBucket(snapshot, preferences: p)
         return [(p.showPrimary, bucket?.primary, p.primaryColorRules), (p.showSecondary, bucket?.secondary, p.secondaryColorRules)].compactMap { shown, window, rules in
             guard shown, let window, !window.isResetPending(at: now), let remaining = window.remaining else { return nil }
-            return percentageColor(remaining: remaining, rules: rules)
+            if let hex = colorHex(remaining: remaining, rules: rules) { return color(hex) }
+            if p.tideLowThreshold != nil || p.tideHighThreshold != nil {
+                return TidePalette.statusRGB(remaining, preferences: p)
+            }
+            return PanelPalette.remainingQuotaColor(remaining)
         }
     }
     static func title(snapshot: QuotaSnapshot?, preferences: Preferences, verified: Bool, now: Date) -> NSAttributedString {
@@ -44,16 +48,23 @@ enum MenuBarRenderer {
         return [top, bottom].filter { !QuotaPresentation.menuTitle(snapshot: snapshot, preferences: $0, verified: verified, now: now).isEmpty }
             .map { percentageColors(snapshot: snapshot, preferences: $0, verified: verified, now: now) }
     }
-    static func stackedImage(lines: [String], showIcon: Bool, colors: [[NSColor]] = []) -> NSImage {
+    static func stackedImage(lines: [String], showIcon: Bool, colors: [[NSColor]] = [],
+                             foreground: NSColor = .labelColor) -> NSImage {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .medium)
         let rows = Array(lines.prefix(2)).enumerated().map { index, line in
-            attributed(line, colors: index < colors.count ? colors[index] : [], font: font)
+            attributed(line, colors: index < colors.count ? colors[index] : [], font: font, foreground: foreground)
         }
         let textWidth = ceil(rows.map { $0.size().width }.max() ?? 0)
         let iconWidth: CGFloat = showIcon ? (rows.isEmpty ? 18 : 23) : 0
         let size = NSSize(width: max(16, iconWidth + textWidth), height: 22)
+        let glyph = showIcon ? TideAppIcon.menuGlyph : nil
         let image = NSImage(size: size, flipped: false) { _ in
-            if showIcon { ProviderIcon.codex().draw(in: NSRect(x: 0, y: 2.5, width: 17, height: 17)) }
+            if let glyph {
+                let rect = NSRect(x: 0, y: 2.5, width: 17, height: 17)
+                glyph.draw(in: rect)
+                foreground.setFill()
+                rect.fill(using: .sourceAtop)
+            }
             for (index, row) in rows.enumerated() {
                 let y: CGFloat = rows.count == 1 ? 5 : (index == 0 ? 10.5 : -0.5)
                 row.draw(at: NSPoint(x: iconWidth, y: y))

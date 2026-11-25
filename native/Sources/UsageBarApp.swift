@@ -11,9 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private(set) var panelWindow: NSWindow?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var menuImageKey: MenuImageKey?
+    private var signalTimer: Timer?
+    private var signalDimmed = false
 
     private struct MenuImageKey: Equatable {
         let stacked: Bool
+        let picture: TideMenuPicture?
         let lines: [String]
         let showIcon: Bool
         let appearance: AppAppearance
@@ -41,7 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UNUserNotificationCenter.current().delegate = self
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.delegate = self
+        notificationCenter.setNotificationCategories([
+            UNNotificationCategory(identifier: LowQuotaReminder.forecastCategory, actions: [
+                UNNotificationAction(identifier: LowQuotaReminder.showRecommendation, title: "查看备用账号", options: .foreground),
+                UNNotificationAction(identifier: LowQuotaReminder.later, title: "稍后")
+            ], intentIdentifiers: [])
+        ])
         configurePresentation()
         state.start()
         state.appUpdates.start()
@@ -77,7 +87,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        await MainActor.run { self.showPopover() }
+        let action = response.actionIdentifier
+        let profile = response.notification.request.content.userInfo["recommendedProfileID"] as? String
+        guard action != LowQuotaReminder.later else { return }
+        await MainActor.run {
+            self.showPopover()
+            if action == LowQuotaReminder.showRecommendation, let profile, self.state.canSwitchAccount(profile) {
+                self.state.selectedAccountID = profile
+                self.state.accountPickerPresented = true
+            }
+        }
     }
 
     private func updatePresentation() {
@@ -85,10 +104,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let displayed = state.menuBarAccount
         let lines = QuotaPresentation.stackedLines(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
         let colors = MenuBarRenderer.stackedColors(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
-        let imageKey = MenuImageKey(stacked: state.preferences.isStacked,
-                                   lines: state.preferences.isStacked ? lines : [],
-                                   showIcon: state.preferences.showIcon, appearance: state.preferences.appearance, colors: colors)
-        if state.preferences.isStacked {
+        let style = state.preferences.menuStyle
+        let stacked = style == .stack
+        let picture = style == .stack || style == .legacy ? nil : TideMenuPicture.make(account: displayed, preferences: state.preferences)
+        let imageKey = MenuImageKey(stacked: stacked, picture: picture,
+                                   lines: stacked ? lines : [],
+                                   showIcon: state.preferences.showIcon, appearance: state.preferences.appearance,
+                                   colors: colors)
+        updateSignalTimer(for: picture)
+        if let picture {
+            if menuImageKey != imageKey { button.image = picture.image(dimmedSignal: signalDimmed) }
+            button.imagePosition = .imageOnly
+            if !button.title.isEmpty { button.title = "" }
+        } else if stacked {
             if menuImageKey != imageKey {
                 button.image = MenuBarRenderer.stackedImage(lines: lines, showIcon: state.preferences.showIcon, colors: colors)
             }
@@ -100,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             let title = MenuBarRenderer.title(snapshot: displayed.snapshot, preferences: state.preferences, verified: displayed.verified, now: displayed.now)
             if !button.attributedTitle.isEqual(to: title) { button.attributedTitle = title }
             if state.preferences.showIcon {
-                if menuImageKey != imageKey { button.image = ProviderIcon.codex() }
+                if menuImageKey != imageKey { button.image = TideAppIcon.menuGlyph }
                 button.imagePosition = .imageLeading
             } else {
                 // Restore text rendering when leaving the stacked image layout.
@@ -111,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         menuImageKey = imageKey
         button.toolTip = [state.secondAccount == nil ? "CodexUsageBar" : ("CodexUsageBar · " + state.accountRole(state.dualClient.activeProfileID ?? "primary")), displayed.snapshot?.accountLabel ?? "账号待核验", displayed.updateStatus.title,
                           displayed.statusDetail, displayed.timestampLabel, displayed.watchDescription].joined(separator: "\n")
-        button.setAccessibilityLabel("CodexUsageBar " + (state.preferences.isStacked ? lines.joined(separator: "，") : displayed.menuTitle))
+        button.setAccessibilityLabel("CodexUsageBar " + (picture?.imageDescription ?? (stacked ? lines.joined(separator: "，") : displayed.menuTitle)))
         let appearance: NSAppearance?
         switch state.preferences.appearance {
         case .dark: appearance = NSAppearance(named: .darkAqua)
@@ -126,6 +154,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         settingsWindow?.contentView?.appearance = appearance
         panelWindow?.appearance = appearance
         panelWindow?.contentView?.appearance = appearance
+    }
+
+    private func updateSignalTimer(for picture: TideMenuPicture?) {
+        let pulse = picture?.shouldPulse == true && !state.paused && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard pulse else {
+            signalTimer?.invalidate()
+            if signalDimmed, let picture { statusItem.button?.image = picture.image() }
+            signalTimer = nil
+            signalDimmed = false
+            return
+        }
+        guard signalTimer == nil else { return }
+        signalTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let picture = self.menuImageKey?.picture, picture.shouldPulse else { return }
+                self.signalDimmed.toggle()
+                self.statusItem.button?.image = picture.image(dimmedSignal: self.signalDimmed)
+            }
+        }
     }
 
     @objc private func statusClicked() {
@@ -214,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let maximum = max(160, available - 24)
         if let requestedHeight { state.panelPreferredHeight = requestedHeight }
         // Header, footer and resize grip remain outside the scrollable content.
-        let automatic = state.preferences.panelFitsScreen == true ? min(maximum, OrbitLayout.defaultPanelHeight) : (state.panelContentHeight > 0 ? min(OrbitLayout.defaultPanelHeight, state.panelContentHeight + 94) : OrbitLayout.defaultPanelHeight)
+        let automatic = state.preferences.panelFitsScreen == true ? min(maximum, OrbitLayout.defaultPanelHeight) : (state.panelContentHeight > 0 ? min(OrbitLayout.defaultPanelHeight, state.panelContentHeight + (state.accountPickerPresented ? 66 : 108)) : OrbitLayout.defaultPanelHeight)
         let desired = state.panelPreferredHeight ?? automatic
         let height = min(maximum, max(240, desired))
         let width = OrbitLayout.panelWidth
@@ -233,18 +280,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     @objc func openSettings() {
+        let sourceScreen = popover.contentViewController?.view.window?.screen ?? panelWindow?.screen
+            ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+            ?? statusItem?.button?.window?.screen ?? NSScreen.main
         closePopoverImmediately()
         panelWindow?.close()
         if settingsWindow == nil {
-            let host = NSHostingController(rootView: UsageSettingsView(state: state))
+            let screenFrame = sourceScreen?.visibleFrame ?? CGRect(origin: .zero, size: OrbitLayout.settingsSize)
+            let frame = OrbitLayout.settingsFrame(in: screenFrame)
+            let host = NSHostingController(rootView: UsageSettingsView(state: state, size: frame.size))
+            host.sizingOptions = []
             let window = NSWindow(contentViewController: host)
             window.title = "CodexUsageBar 设置"
-            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
             window.delegate = self
-            window.isReleasedWhenClosed = false; window.center()
+            window.isReleasedWhenClosed = false
+            window.setFrame(frame, display: false)
             settingsWindow = window; updatePresentation()
         }
-        NSApp.activate(ignoringOtherApps: true); settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if settingsWindow?.isMiniaturized == true { settingsWindow?.deminiaturize(nil) }
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
     @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showPopover(); return true }
@@ -253,6 +311,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
+        signalTimer?.invalidate()
         state.appUpdates.stop()
         for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     }

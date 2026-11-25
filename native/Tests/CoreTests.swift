@@ -8,6 +8,18 @@ import Foundation
             count += 1; print("PASS: \(label)")
         }
         let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var preferences = Preferences()
+        preferences.showPlan = true
+        let encoder = JSONEncoder()
+        let defaults = try encoder.encode(preferences)
+        var legacyPreferences = try JSONSerialization.jsonObject(with: defaults) as! [String: Any]
+        legacyPreferences["tideAppIcon"] = "prompt"
+        legacyPreferences["tideIconFinish"] = "clear"
+        let restoredPreferences = try JSONDecoder().decode(Preferences.self, from: JSONSerialization.data(withJSONObject: legacyPreferences))
+        check(restoredPreferences == preferences, "Legacy icon selections are ignored while other preferences are preserved")
+        let savedPreferences = try JSONSerialization.jsonObject(with: encoder.encode(restoredPreferences)) as! [String: Any]
+        check(savedPreferences["tideAppIcon"] == nil && savedPreferences["tideIconFinish"] == nil,
+              "Saving preferences drops legacy icon selections")
         let short = QuotaWindow(usedPercent: 16, windowDurationMins: 300, resetsAt: now.addingTimeInterval(3600).timeIntervalSince1970)
         let long = QuotaWindow(usedPercent: 3, windowDurationMins: 10080, resetsAt: now.addingTimeInterval(86400).timeIntervalSince1970)
         let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: short, secondary: long, planType: "plus", spendControlReached: false, rateLimitReachedType: nil)
@@ -101,6 +113,27 @@ import Foundation
         check(QuotaPresentation.resetCountdown(short, now: now.addingTimeInterval(3599)) == "剩 1m", "last second does not show zero minutes")
         check(QuotaPresentation.resetCountdown(expired, now: now) == nil &&
               QuotaPresentation.resetCountdown(nil, now: now) == nil, "elapsed and missing resets have no countdown")
+        func observation(_ used: Double, at date: Date, scope: String = "account-a", reset: Date = now.addingTimeInterval(3600)) -> QuotaSnapshot {
+            let window = QuotaWindow(usedPercent: used, windowDurationMins: 300, resetsAt: reset.timeIntervalSince1970)
+            let bucket = QuotaBucket(limitId: "codex", limitName: nil, primary: window, secondary: long,
+                                     planType: "plus", spendControlReached: nil, rateLimitReachedType: nil)
+            return QuotaSnapshot(observedAt: date, accountScope: scope, accountLabel: "test", planType: "plus", buckets: [bucket])
+        }
+        var history = TideQuotaHistory()
+        let last = observation(70, at: now)
+        history.record(observation(50, at: now.addingTimeInterval(-1200)))
+        history.record(observation(60, at: now.addingTimeInterval(-600)))
+        check(history.projection(bucket: last.buckets.first, now: now) == nil, "two observations do not establish a forecast")
+        history.record(last)
+        let forecast = history.projection(bucket: last.buckets.first, now: now)
+        check(forecast?.exhaustion == now.addingTimeInterval(1800), "recent short-window use predicts exhaustion before reset")
+        check(history.projection(bucket: last.buckets.first, now: now.addingTimeInterval(301)) == nil, "stale forecasts are suppressed")
+        let refill = observation(20, at: now.addingTimeInterval(10))
+        history.record(refill)
+        check(history.projection(bucket: refill.buckets.first, now: refill.observedAt) == nil, "a refill breaks the quota trend")
+        let otherScope = observation(10, at: now.addingTimeInterval(20), scope: "account-b")
+        history.record(otherScope)
+        check(history.projection(bucket: otherScope.buckets.first, now: otherScope.observedAt) == nil, "forecast does not cross account scopes")
         check(QuotaPresentation.value(short, verified: true, now: now) == "84%", "remaining subtracts used")
         check(QuotaWindow(usedPercent: 0, windowDurationMins: 300, resetsAt: nil).remaining == 100, "zero usage is a valid full allowance")
         check(QuotaWindow(usedPercent: nil, windowDurationMins: 300, resetsAt: nil).remaining == nil, "unknown is not zero")

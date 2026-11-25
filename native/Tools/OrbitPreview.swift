@@ -16,8 +16,8 @@ private enum OrbitFixtures {
         let now = Date()
         let low = mode == "低额度"
         let credits: [ResetCredit] = (0..<(secondary ? 1 : 3)).map { index -> ResetCredit in
-            let days = Double(13 + index * 14)
-            let interval: TimeInterval = mode == "到期预警" && index == 0 ? 64800 : days * 86400 + 64800
+            let days = Double(19 + index * 14)
+            let interval: TimeInterval = (mode == "到期预警" || low) && index == 0 ? 173700 : days * 86400 + 64800
             let expiry = now.addingTimeInterval(interval).timeIntervalSince1970
             return ResetCredit(id: "preview-\(secondary)-\(index)", resetType: "codexRateLimits", status: "available", grantedAt: nil,
                         expiresAt: expiry,
@@ -26,19 +26,19 @@ private enum OrbitFixtures {
         return QuotaSnapshot(observedAt: mode == "过期数据" ? now.addingTimeInterval(-600) : now,
             accountScope: secondary ? "preview-secondary" : "preview-primary", accountLabel: secondary ? "a1***@outlook.com" : "13***@163.com", planType: free ? "free" : "plus",
             buckets: [QuotaBucket(limitId: "codex", limitName: nil,
-                primary: QuotaWindow(usedPercent: low ? 92 : (secondary ? 0 : 14), windowDurationMins: 300,
-                                     resetsAt: now.addingTimeInterval(mode == "重置待确认" ? -1 : 7200).timeIntervalSince1970),
-                secondary: free ? nil : QuotaWindow(usedPercent: low ? 88 : (secondary ? 3 : 47), windowDurationMins: 10080, resetsAt: now.addingTimeInterval(172800).timeIntervalSince1970),
+                primary: QuotaWindow(usedPercent: secondary ? 8 : (low ? 88 : 51), windowDurationMins: 300,
+                                     resetsAt: now.addingTimeInterval(mode == "重置待确认" ? -1 : 6060).timeIntervalSince1970),
+                secondary: free ? nil : QuotaWindow(usedPercent: secondary ? 29 : 67, windowDurationMins: 10080, resetsAt: now.addingTimeInterval(403200).timeIntervalSince1970),
                 planType: free ? "free" : "plus", spendControlReached: nil, rateLimitReachedType: nil)],
             accountEmail: secondary ? "alex.wang@outlook.example" : "lin.chen@example.com",
             resetCredits: mode == "未知重置卡" ? nil : ResetCreditSummary(availableCount: free ? 0 : credits.count, credits: free ? [] : credits))
     }
     static func activity() -> TokenActivity {
         let days = TokenActivity.heatmapDays()
-        return TokenActivity(summary: .init(lifetimeTokens: 650_000_000, peakDailyTokens: 120_000_000, longestRunningTurnSec: 1870, currentStreakDays: 0, longestStreakDays: 5),
+        return TokenActivity(summary: .init(lifetimeTokens: 450_000_000, peakDailyTokens: 120_000_000, longestRunningTurnSec: 1779, currentStreakDays: 2, longestStreakDays: 5),
             dailyUsageBuckets: days.enumerated().compactMap { i, day in
                 guard let date = TokenActivity.date(day), date <= Date() else { return nil }
-                return .init(startDate: day, tokens: i > 150 ? Double((i * 13) % 5) * 28_400_000 : 0)
+                return .init(startDate: day, tokens: i > 127 ? Double((i * 13) % 5) * 28_400_000 : (i % 5 == 0 ? 13_200_000 : 0))
             })
     }
 }
@@ -59,6 +59,11 @@ private final class OrbitPreviewModel: ObservableObject {
         state.setSecondAccountEnabled(true)
         if CommandLine.arguments.contains("--three-accounts") { state.addAccount(startLogin: false) }
         state.panelHeight = OrbitLayout.defaultPanelHeight
+        state.onPanelResize = { [weak state] requested in
+            guard let state else { return }
+            let target = requested ?? (state.panelContentHeight + (state.accountPickerPresented ? 66 : 108))
+            state.panelHeight = min(820, max(240, target))
+        }
         fixtures()
         if CommandLine.arguments.contains("--view-backup") { state.selectedAccountID = "secondary" }
     }
@@ -70,6 +75,24 @@ private final class OrbitPreviewModel: ObservableObject {
             }
             entry.state.verified = mode != "未登录"
             entry.state.now = Date()
+            entry.state.recordQuotaObservation(QuotaSnapshot(observedAt: entry.state.now, accountScope: nil,
+                accountLabel: "", planType: nil, buckets: []))
+            if mode != "额度观察中", let snapshot = entry.state.snapshot, let bucket = snapshot.buckets.first,
+               let window = bucket.primary, let used = window.usedPercent {
+                let offsets = Array(stride(from: 11_940, through: 1_801, by: -1_500)) + Array(stride(from: 1800, through: 0, by: -300))
+                for offset in offsets {
+                    let rate = entry.id == "primary" ? (mode == "低额度" ? 12.0 / 46 : 31.0 / 101) : 0.0
+                    let olderUse = max(0, Double(offset - 1800)) / 10_140 * max(0, used - rate * 30 - 5)
+                    let sampled = QuotaWindow(usedPercent: max(0, used - rate * Double(min(1800, offset)) / 60 - olderUse),
+                                              windowDurationMins: window.windowDurationMins, resetsAt: window.resetsAt)
+                    let historical = QuotaBucket(limitId: bucket.limitId, limitName: bucket.limitName, primary: sampled,
+                                                  secondary: bucket.secondary, planType: bucket.planType,
+                                                  spendControlReached: nil, rateLimitReachedType: nil)
+                    entry.state.recordQuotaObservation(QuotaSnapshot(observedAt: snapshot.observedAt.addingTimeInterval(-Double(offset)),
+                        accountScope: snapshot.accountScope, accountLabel: snapshot.accountLabel,
+                        planType: snapshot.planType, buckets: [historical]))
+                }
+            }
             entry.state.tokenActivity = OrbitFixtures.activity()
             entry.state.activityUpdatedAt = Date()
         }
@@ -95,7 +118,7 @@ private struct OrbitPreviewShell: View {
                     Text("主弹窗").tag(false); Text("设置页面").tag(true)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 165)
                 Picker("数据状态", selection: $model.mode) {
-                    ForEach(["正常", "低额度", "到期预警", "过期数据", "重置待确认", "未知重置卡", "未登录"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["正常", "额度观察中", "低额度", "到期预警", "过期数据", "重置待确认", "未知重置卡", "未登录"], id: \.self) { Text($0).tag($0) }
                 }.labelsHidden().frame(width: 170)
                 Toggle("备用 Free", isOn: $model.free).font(.system(size: 11))
                 Picker("外观", selection: Binding(get: { state.preferences.appearance }, set: { state.preferences.appearance = $0 })) {
@@ -134,29 +157,23 @@ private struct OrbitPreviewApplication {
         if let flag = args.firstIndex(of: "--capture"), args.count > flag + 1 {
             let directory = URL(fileURLWithPath: args[flag + 1])
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let stages: [(String, SettingsTab?)] = [("panel", nil), ("account-menu", nil), ("activity-panel", nil), ("panel-bottom", nil)] + SettingsTab.allCases.map { ($0.rawValue, Optional($0)) }
+            let stages: [(String, SettingsTab?)] = [("panel", nil), ("panel-observing", nil), ("panel-dark", nil), ("panel-dark-normal", nil),
+                ("account-menu", nil), ("account-menu-dark", nil)] + SettingsTab.allCases.map { ($0.rawValue, Optional($0)) }
             @MainActor func capture(_ index: Int) {
                 guard index < stages.count else { model.cleanup(); app.terminate(nil); return }
                 let (name, tab) = stages[index]
-                model.state.orbitActivitySelected = name == "activity-panel"
-                model.state.accountPickerPresented = name == "account-menu"
+                let dark = name.hasSuffix("-dark") || name == "panel-dark-normal"
+                let menu = name.hasPrefix("account-menu")
+                model.state.preferences.appearance = dark ? .dark : .light
+                model.mode = name == "panel-observing" ? "额度观察中" : name == "panel-dark" || menu ? "低额度" : "正常"
+                model.state.selectedAccountID = "primary"
+                model.state.accountPickerPresented = menu
                 model.showingSettings = tab != nil
                 if let tab { model.state.settingsTab = tab }
+                NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                     window.contentView?.layoutSubtreeIfNeeded()
-                    if name == "panel-bottom", let root = window.contentView {
-                        @MainActor func scrollBottom(_ view: NSView) {
-                            if let scroll = view as? NSScrollView, let document = scroll.documentView, document.bounds.height > scroll.contentView.bounds.height {
-                                let y = document.isFlipped ? document.bounds.height - scroll.contentView.bounds.height : 0
-                                scroll.contentView.scroll(to: NSPoint(x: 0, y: y)); scroll.reflectScrolledClipView(scroll.contentView)
-                            }
-                            for child in view.subviews { scrollBottom(child) }
-                        }
-                        scrollBottom(root)
-                    }
-                    let captureWindow = name == "account-menu"
-                        ? (NSApp.windows.first { $0 !== window && $0.isVisible && $0.frame.width >= 350 && $0.frame.width < 450 } ?? window)
-                        : window
+                    let captureWindow = window
                     if let view = captureWindow.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                         view.cacheDisplay(in: view.bounds, to: bitmap)
                         if let png = bitmap.representation(using: .png, properties: [:]) { try? png.write(to: directory.appendingPathComponent(name + ".png")) }

@@ -121,7 +121,8 @@ prune_backups() {
   cutoff=$(( $(/bin/date +%s) - retention_seconds ))
   newest="$cutoff"
   set --
-  for candidate in "$directory"/.CodexUsageBar-backup-????????-????-????-????-????????????.app; do
+  for candidate in "$directory"/.CodexUsageBar-backup-????????-????-????-????-????????????.noindex \
+                   "$directory"/.CodexUsageBar-backup-????????-????-????-????-????????????.app; do
     [ -d "$candidate" ] && [ ! -L "$candidate" ] || continue
     identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$candidate/Contents/Info.plist" 2>/dev/null) || continue
     [ "$identifier" = com.guoyuming.UsageBar ] || continue
@@ -138,6 +139,14 @@ prune_backups() {
   done
   [ "$failed" -eq 0 ] || return 1
   if [ -n "$keep" ]; then
+    case "$keep" in
+      *.app)
+        archived="${keep%.app}.noindex"
+        [ ! -e "$archived" ] && [ ! -L "$archived" ] || return 1
+        /bin/mv "$keep" "$archived" || return 1
+        keep="$archived"
+        ;;
+    esac
     modified=$(/usr/bin/stat -f %m "$keep") || return 1
     printf '%s\n' "$((modified + retention_seconds))"
   fi
@@ -172,7 +181,8 @@ if ! /usr/bin/codesign --verify --deep --strict "$staged"; then
   rm -rf "$staged"
   fail '安装文件签名验证失败，原版本保留。'
 fi
-if ! mv "$target" "$backup"; then
+# A reused bundle directory timestamp can make macOS reuse the previous icon.
+if ! /usr/bin/touch "$staged" || ! mv "$target" "$backup"; then
   rm -rf "$staged"
   fail '无法替换应用，原版本保留，请检查安装目录权限。'
 fi
@@ -214,8 +224,9 @@ fi
             throw UpdateFailure.invalid("应用目录不可写，请将应用移至可写的固定目录后重试。")
         }
         let token = UUID().uuidString
-        let staged = directory.appendingPathComponent(".CodexUsageBar-update-" + token + ".app")
-        let backup = directory.appendingPathComponent(".CodexUsageBar-backup-" + token + ".app")
+        // Keep both bundles beside the target for atomic moves, outside Spotlight's application list.
+        let staged = directory.appendingPathComponent(".CodexUsageBar-update-" + token + ".noindex")
+        let backup = directory.appendingPathComponent(".CodexUsageBar-backup-" + token + ".noindex")
         let helper = workDirectory.appendingPathComponent("install.sh")
         try helperScript.write(to: helper, atomically: true, encoding: .utf8)
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
